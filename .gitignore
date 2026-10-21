@@ -1,0 +1,27 @@
+# Node.js / React
+node_modules/
+frontend/dist/
+frontend/.vite/
+npm-debug.log*
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+application-local.properties
+application-secret.properties
+
+# Java / Spring Boot
+target/
+*.class
+
+# IDE and operating system
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local tool installations
+/Git/
+/nodejs/
+
