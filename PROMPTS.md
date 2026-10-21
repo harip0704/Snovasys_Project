@@ -1,77 +1,93 @@
-# AI Interaction Log
+# TrustVault — AI Interaction Log
+
+This file documents how AI tools were used during the planning and initial setup of TrustVault. AI-generated suggestions were reviewed, and implementation details must be verified through code review and testing.
+
+---
 
 ## 19-10-2026
 
-### Entry 1: TrustVault Project Planning and Security Architecture
+### Entry 1: Understanding the Problem Statement and Clarifying Doubts
 
 **AI Tool:** ChatGPT
 
 **Prompt:**
-```text
-I am participating in the Snovasys Fresher Hiring Challenge 2026, and my project is TrustVault — Secure Document Sharing with a Real Audit Trail. Help me understand the problem statement, identify the most important functional and security requirements, and plan a practical implementation within the available development time.
 
-Recommend a suitable technology stack for the frontend, backend, database, and private file storage. Explain how authentication, role-based access control, document permissions, permission revocation, and audit logging should work together. Also help me identify the main security risks, plan security testing, and organize the development process into clear, manageable steps.
-```
+I read the Snovasys Fresher Hiring Challenge 2026 problem statement, "TrustVault — Secure Document Sharing with a Real Audit Trail." I understood the basic purpose of the project, but I had some doubts about certain requirements and how to approach the implementation.
+
+I asked ChatGPT to clarify the differences between the Administrator, Document Owner, and Viewer roles; how document-level permissions and access revocation should work; how the system should record document activity in an audit trail; and how unauthorized access should be prevented and tested.
+
+I also asked for clarification on the expected technology stack, project development steps, and submission requirements so I could plan the implementation based on my understanding of the problem statement.
 
 **AI Output:**
 
-ChatGPT explained that TrustVault is a security-focused document-sharing application rather than a basic CRUD system. It identified the need to prevent unauthorized document access, isolate documents belonging to different clients, revoke permissions when access is no longer required, and maintain an audit trail of important access events.
+ChatGPT clarified the requirements I had doubts about and explained how the three user roles differ, how document permissions should be managed, and why the backend must check authorization for every protected operation.
 
-The recommended stack was React + TypeScript, Java + Spring Boot, Microsoft SQL Server, private AWS S3 storage, and JUnit 5 with Spring Security Test. The AI also suggested organizing the work into implementation stages covering project setup, authentication, document operations, permissions, audit logging, security testing, and documentation.
+It also explained the importance of enforcing revoked permissions on subsequent access attempts, recording successful and denied access attempts in the audit trail, and testing whether one user can access another user's documents without authorization.
+
+Based on these clarifications, I gained a better understanding of the security requirements and the expected deliverables. The proposed technology stack was React with TypeScript, Java with Spring Boot, Microsoft SQL Server, private AWS S3 storage, and JUnit 5 with Spring Security Test.
+
+These explanations helped me clarify my doubts and plan the project. The implementation and security controls still needed to be developed and verified.
 
 **Mistake Identified:**
 
-No specific incorrect implementation or verified security vulnerability was identified during this planning activity. The main design risk was treating document sharing as an ordinary CRUD workflow without making authorization, document isolation, permission revocation, and auditability core requirements.
+At the planning stage, I had not fully understood how document-level permissions, access revocation, and audit trail integrity should work together. There was a risk of treating the project as a basic document management application instead of a security-focused system.
 
 **Correction Made:**
 
-Defined the project direction around least-privilege access, backend-enforced authorization, private file storage, explicit permission management, and auditable access decisions. AI was designated as an optional development aid rather than a security enforcement mechanism. Security-sensitive features were identified as requiring implementation and verification before being described as complete.
+Clarified the role responsibilities, document-level access rules, backend authorization requirements, access revocation expectations, audit logging requirements, and security testing approach before beginning implementation.
 
 **Verification:**
 
-Reviewed the proposed technology stack and development plan against the challenge's stated security objectives. Confirmed the intended separation between the frontend, backend API, database, and private file storage. This was a planning review only; application security controls and automated security tests had not yet been implemented or verified.
+Reviewed the explanations against the original challenge problem statement. This was a requirements review only; application security controls had not yet been implemented or tested.
 
 **Fix Commit:**
 
-Not applicable. This entry documents project planning and architecture decisions rather than a specific code fix.
+Not applicable. This entry documents problem analysis and clarification rather than a code fix.
 
 ---
 
 ## 21-10-2026
 
-### Entry 2: Git Repository Setup and Project Documentation
+### Entry 2: Development Environment and Project Setup
 
 **AI Tool:** ChatGPT
 
 **Prompt:**
-```text
-Guide me step by step in setting up Git for my TrustVault project in D:\Snovasys_Project. Help me configure a root .gitignore that excludes local Git and Node.js installation folders, dependency directories, build outputs, IDE files, and sensitive environment configuration. Help me prepare a professional README.md that explains the project's purpose, technology stack, security objectives, planned features, and current development status.
 
-After the setup, show me how to verify the repository using Git commands, confirm that the React + TypeScript frontend files are tracked, and ensure that unnecessary dependencies and local installation files are excluded. Explain each step clearly and wait for verification before moving to the next task.
-```
+Guide me step by step through setting up my TrustVault development environment in `D:\Snovasys_Project`.
+
+Help me verify Git, Java, Node.js, npm, and Visual Studio Code. Explain how to configure Git, prepare the root `.gitignore`, organize the project workspace, and initialize a React with TypeScript frontend using Vite.
+
+If I encounter errors, help me understand the cause and fix them. Give me clear verification steps before moving to the next task.
 
 **AI Output:**
 
-ChatGPT provided step-by-step guidance for creating and reviewing `.gitignore`, improving `README.md`, and verifying the repository's contents. The ignore rules covered Node.js dependencies, frontend build output, environment files, Java build artifacts, IDE files, and local Git and Node.js installation directories.
+ChatGPT provided step-by-step instructions for verifying the development tools, configuring the workspace, preparing `.gitignore`, and creating the React with TypeScript frontend using Vite.
 
-The AI also explained how to use `git status`, `git show --stat --oneline HEAD`, `git ls-files`, and `git check-ignore` to distinguish staged files, committed files, tracked files, and ignored dependencies.
+The frontend project was created in `D:\Snovasys_Project\frontend`, the required dependencies were installed, and the Vite development server started successfully.
 
 **Mistake Identified:**
 
-Initial Git status output showed only selected staged files, which made it necessary to verify exactly what the initial commit contained and which documentation files were awaiting a subsequent commit. The presence of an untracked directory alone was not sufficient to establish whether its contents should be included in the repository.
+Initially, the `node` command was not recognized in PowerShell. Git availability and Visual Studio Code startup and workspace settings also required troubleshooting.
 
 **Correction Made:**
 
-Added `/Git/` and `/nodejs/` to the root `.gitignore` to exclude local installation folders without deleting them. Reviewed the initial commit and tracked-file list to confirm that the root `.gitignore`, README, and React + TypeScript frontend files were included. Checked the ignore rule for `frontend/node_modules/` before proceeding.
+Resolved the development environment issues, verified the installed tool versions, configured the project workspace and `.gitignore`, and initialized the frontend project.
 
 **Verification:**
 
-- `git show --stat --oneline HEAD` identified the initial commit as `5c91a8f` (`Initial commit: TrustVault project setup`).
-- The initial commit contained the root `.gitignore`, root `README.md`, and React + TypeScript frontend source and configuration files.
-- `git ls-files` listed the tracked project files, including `PROMPTS.md` and `THREATS.md`.
-- `git check-ignore frontend/node_modules/` returned `frontend/node_modules/`, confirming that the frontend dependency directory was ignored.
-- At the last recorded status check, `PROMPTS.md` and `THREATS.md` were staged for a subsequent commit. A clean working tree after that commit has not yet been verified.
+- Git version: `2.56.0.windows.2`
+- Java version: `24.0.1`
+- Node.js version: `v24.22.0`
+- npm version: `11.19.1`
+- Frontend: React with TypeScript using Vite
+- Development server: `http://localhost:5173/`
+- Dependencies: Installation completed successfully.
+
+These checks verified the development environment and frontend startup, not the completed application's security or backend functionality.
 
 **Fix Commit:**
 
-Initial commit: `5c91a8f`. No remote commit URL has been provided. Record the relevant commit hash and remote URL after the documentation changes are committed and pushed.
+Initial commit: `5c91a8f` — `Initial commit: TrustVault project setup`.
+
+Add the actual GitHub commit URL after confirming that the commit has been pushed to the remote repository.
