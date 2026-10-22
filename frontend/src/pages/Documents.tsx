@@ -1,3 +1,4 @@
+
 import {
   useEffect,
   useMemo,
@@ -8,18 +9,18 @@ import {
 import { Link } from "react-router-dom";
 import "./Documents.css";
 
+type Theme = "light" | "dark";
+type DocumentStatus = "Protected" | "Restricted";
+type UploadStatus = "Ready for review" | "Rejected";
+
 type DocumentItem = {
   id: number;
   name: string;
   category: string;
   owner: string;
   updated: string;
-  access: "Protected" | "Restricted";
+  status: DocumentStatus;
 };
-
-type Theme = "light" | "dark";
-
-type UploadStatus = "Ready to upload" | "Rejected";
 
 type UploadAttempt = {
   id: string;
@@ -31,14 +32,26 @@ type UploadAttempt = {
   addedAt: string;
 };
 
-const initialDocuments: DocumentItem[] = [
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_RECENT_FILES = 5;
+const ALLOWED_EXTENSIONS = [".pdf", ".doc", ".docx", ".txt"];
+
+const CATEGORIES = [
+  "Legal",
+  "Contracts",
+  "Finance",
+  "Policies",
+  "Other",
+];
+
+const demoDocuments: DocumentItem[] = [
   {
     id: 1,
     name: "Employment Agreement.pdf",
     category: "Legal",
     owner: "Admin",
     updated: "21 Oct 2026",
-    access: "Protected",
+    status: "Protected",
   },
   {
     id: 2,
@@ -46,7 +59,7 @@ const initialDocuments: DocumentItem[] = [
     category: "Contracts",
     owner: "Priya",
     updated: "20 Oct 2026",
-    access: "Protected",
+    status: "Protected",
   },
   {
     id: 3,
@@ -54,7 +67,7 @@ const initialDocuments: DocumentItem[] = [
     category: "Finance",
     owner: "HR Team",
     updated: "19 Oct 2026",
-    access: "Restricted",
+    status: "Restricted",
   },
   {
     id: 4,
@@ -62,16 +75,11 @@ const initialDocuments: DocumentItem[] = [
     category: "Policies",
     owner: "Admin",
     updated: "18 Oct 2026",
-    access: "Protected",
+    status: "Protected",
   },
 ];
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
-const MAX_RECENT_FILES = 5;
-
-const ALLOWED_EXTENSIONS = [".pdf", ".doc", ".docx", ".txt"];
-
-function getSavedTheme(): Theme {
+function getInitialTheme(): Theme {
   try {
     return localStorage.getItem("trustvault-theme") === "dark"
       ? "dark"
@@ -82,67 +90,75 @@ function getSavedTheme(): Theme {
 }
 
 function formatFileSize(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} bytes`;
-  }
-
+  if (bytes < 1024) return `${bytes} bytes`;
   if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(2)} KB`;
+    return `${(bytes / 1024).toFixed(1)} KB`;
   }
-
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function getFileExtension(fileName: string): string {
-  const dotIndex = fileName.lastIndexOf(".");
-
-  if (dotIndex <= 0 || dotIndex === fileName.length - 1) {
-    return "FILE";
-  }
-
-  return fileName.slice(dotIndex + 1).toUpperCase();
+function getExtension(name: string): string {
+  const index = name.lastIndexOf(".");
+  return index > 0 && index < name.length - 1
+    ? name.slice(index + 1).toUpperCase()
+    : "FILE";
 }
 
 export default function Documents() {
-  const [documents] = useState<DocumentItem[]>(initialDocuments);
+  const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
-  const [message, setMessage] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
   const [uploadAttempts, setUploadAttempts] = useState<UploadAttempt[]>([]);
-  const [theme, setTheme] = useState<Theme>(getSavedTheme);
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState<"info" | "error">("info");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Keep the visual theme consistent with the rest of the application.
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
 
     try {
       localStorage.setItem("trustvault-theme", theme);
     } catch {
-      // Theme still works if local storage is unavailable.
+      // Theme remains usable when local storage is unavailable.
     }
   }, [theme]);
 
-  const toggleTheme = () => {
-    setTheme((current) => (current === "light" ? "dark" : "light"));
-  };
-
   const filteredDocuments = useMemo(() => {
-    return documents.filter((document) => {
-      const searchTerm = search.trim().toLowerCase();
+    const query = search.trim().toLowerCase();
 
+    return demoDocuments.filter((doc) => {
       const matchesSearch =
-        document.name.toLowerCase().includes(searchTerm) ||
-        document.owner.toLowerCase().includes(searchTerm);
+        doc.name.toLowerCase().includes(query) ||
+        doc.owner.toLowerCase().includes(query) ||
+        doc.category.toLowerCase().includes(query);
 
       const matchesCategory =
-        category === "All" || document.category === category;
+        category === "All" || doc.category === category;
 
-      return matchesSearch && matchesCategory;
+      const matchesStatus =
+        statusFilter === "All" || doc.status === statusFilter;
+
+      return matchesSearch && matchesCategory && matchesStatus;
     });
-  }, [documents, search, category]);
+  }, [search, category, statusFilter]);
 
-  function handleUpload() {
+  const protectedCount = demoDocuments.filter(
+    (doc) => doc.status === "Protected",
+  ).length;
+
+  function showMessage(text: string, type: "info" | "error" = "info") {
+    setMessage(text);
+    setMessageType(type);
+  }
+
+  function toggleTheme() {
+    setTheme((current) => (current === "light" ? "dark" : "light"));
+  }
+
+  function handleUploadClick() {
     setMessage("");
     fileInputRef.current?.click();
   }
@@ -156,7 +172,7 @@ export default function Documents() {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name: file.name,
       size: file.size,
-      extension: getFileExtension(file.name),
+      extension: getExtension(file.name),
       status,
       detail,
       addedAt: new Date().toLocaleString(),
@@ -171,64 +187,75 @@ export default function Documents() {
     const input = event.currentTarget;
     const file = input.files?.[0];
 
-    if (!file) {
-      return;
-    }
+    if (!file) return;
 
-    const fileName = file.name.toLowerCase();
-
+    const lowerName = file.name.toLowerCase();
     const isAllowed = ALLOWED_EXTENSIONS.some((extension) =>
-      fileName.endsWith(extension),
+      lowerName.endsWith(extension),
     );
 
     if (!isAllowed) {
       const reason =
-        "Unsupported file type. Please select a PDF, DOC, DOCX, or TXT file.";
+        "Unsupported file type. Choose PDF, DOC, DOCX, or TXT.";
 
       addUploadAttempt(file, "Rejected", reason);
-      setMessage(reason);
-      input.value = "";
-      return;
-    }
-
-    if (file.size > MAX_FILE_SIZE) {
-      const reason = "File is too large. Maximum allowed size is 10 MB.";
-
-      addUploadAttempt(file, "Rejected", reason);
-      setMessage(reason);
+      showMessage(reason, "error");
       input.value = "";
       return;
     }
 
     if (file.size === 0) {
-      const reason = "The selected file is empty. Please choose another file.";
+      const reason = "The selected file is empty. Choose another file.";
 
       addUploadAttempt(file, "Rejected", reason);
-      setMessage(reason);
+      showMessage(reason, "error");
+      input.value = "";
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      const reason = "File exceeds the 10 MB demo limit.";
+
+      addUploadAttempt(file, "Rejected", reason);
+      showMessage(reason, "error");
       input.value = "";
       return;
     }
 
     addUploadAttempt(
       file,
-      "Ready to upload",
-      "File passed basic browser validation. Secure backend upload is still pending.",
+      "Ready for review",
+      "Basic browser checks passed. The file has NOT been uploaded to secure storage.",
     );
 
-    setMessage(
-      "File is ready for review. It has not been uploaded to secure storage.",
+    showMessage(
+      "Validation passed. Secure upload is not connected yet; this file remains on your device.",
     );
 
-    // Allows selecting the same file again later.
+    // Allow the same file to be selected again.
     input.value = "";
   }
 
-  function handleRemoveFile(id: string, fileName: string) {
+  function removeUploadAttempt(id: string, name: string) {
     setUploadAttempts((current) =>
-      current.filter((file) => file.id !== id),
+      current.filter((item) => item.id !== id),
     );
 
-    setMessage(`${fileName} removed from the recent activity list.`);
+    showMessage(
+      `${name} was removed from recent activity only. No stored file was deleted.`,
+    );
+  }
+
+  function clearFilters() {
+    setSearch("");
+    setCategory("All");
+    setStatusFilter("All");
+  }
+
+  function handleViewDetails(doc: DocumentItem) {
+    showMessage(
+      `${doc.name}: demo record only. Document details and access checks require the secure backend.`,
+    );
   }
 
   return (
@@ -238,7 +265,6 @@ export default function Documents() {
           <span className="documents-brand-icon" aria-hidden="true">
             ◆
           </span>
-
           <span>
             <strong>TrustVault</strong>
             <small>SECURE WORKSPACE</small>
@@ -254,15 +280,11 @@ export default function Documents() {
             className="documents-theme-toggle"
             type="button"
             onClick={toggleTheme}
-            aria-label={`Switch to ${
-              theme === "light" ? "dark" : "light"
-            } mode`}
             aria-pressed={theme === "dark"}
           >
             <span aria-hidden="true">
               {theme === "light" ? "☾" : "☀"}
             </span>
-
             {theme === "light" ? "Dark Mode" : "Light Mode"}
           </button>
         </div>
@@ -274,20 +296,20 @@ export default function Documents() {
             <p className="documents-eyebrow">
               TRUSTVAULT / FILE MANAGEMENT
             </p>
-
             <h1>My Documents</h1>
-
             <p className="documents-subtitle">
-              Manage confidential files and review their access status.
+              Manage document records, review validation, and inspect
+              demo access status.
             </p>
           </div>
 
           <button
             className="documents-upload-btn"
             type="button"
-            onClick={handleUpload}
+            onClick={handleUploadClick}
           >
-            <span aria-hidden="true">＋</span> Upload Document
+            <span aria-hidden="true">＋</span>
+            Upload Document
           </button>
 
           <input
@@ -300,12 +322,22 @@ export default function Documents() {
           />
         </header>
 
+        <div className="documents-demo-note" role="note">
+          <strong>Development mode:</strong> document rows below are
+          sample records. Browser validation is not a security boundary.
+          Server-side authentication, authorization, file validation,
+          private storage, and audit logging are still required.
+        </div>
+
         {message && (
-          <div className="documents-message" role="status">
-            <span aria-hidden="true">ⓘ</span>
-
+          <div
+            className="documents-message"
+            role={messageType === "error" ? "alert" : "status"}
+          >
+            <span aria-hidden="true">
+              {messageType === "error" ? "⚠" : "ⓘ"}
+            </span>
             <p>{message}</p>
-
             <button
               type="button"
               className="documents-message-close"
@@ -317,19 +349,17 @@ export default function Documents() {
           </div>
         )}
 
-        {/* Recent file activity */}
         <section
           className="documents-upload-activity"
           aria-labelledby="recent-uploads-title"
         >
           <div className="documents-upload-heading">
             <div>
-              <h2 id="recent-uploads-title">Recent Uploads</h2>
+              <h2 id="recent-uploads-title">Recent Upload Activity</h2>
               <p>
-                Review selected files, validation results, and upload status.
+                Review local file selections and basic validation results.
               </p>
             </div>
-
             <span className="documents-upload-count">
               {uploadAttempts.length} / {MAX_RECENT_FILES}
             </span>
@@ -337,99 +367,98 @@ export default function Documents() {
 
           {uploadAttempts.length === 0 ? (
             <div className="documents-upload-empty">
-              <span className="documents-upload-empty-icon" aria-hidden="true">
+              <span
+                className="documents-upload-empty-icon"
+                aria-hidden="true"
+              >
                 ▤
               </span>
-
               <strong>No recent files</strong>
-
               <p>
-                Select a document using Upload Document. Its details and
-                validation status will appear here.
+                Choose Upload Document to check a file. The selection
+                appears here, but is not sent to a server.
               </p>
             </div>
           ) : (
             <div className="documents-upload-list">
-              {uploadAttempts.map((file) => (
-                <article
-                  className="documents-upload-card"
-                  key={file.id}
-                >
-                  <div
-                    className={`documents-upload-file-type ${
-                      file.status === "Rejected"
-                        ? "upload-file-type-rejected"
-                        : "upload-file-type-ready"
-                    }`}
-                    aria-hidden="true"
+              {uploadAttempts.map((file) => {
+                const rejected = file.status === "Rejected";
+
+                return (
+                  <article
+                    className="documents-upload-card"
+                    key={file.id}
                   >
-                    {file.extension}
-                  </div>
-
-                  <div className="documents-upload-file-info">
-                    <h3 title={file.name}>{file.name}</h3>
-
-                    <p className="documents-upload-meta">
-                      {formatFileSize(file.size)} · {file.addedAt}
-                    </p>
-
-                    <span
-                      className={`documents-upload-status ${
-                        file.status === "Rejected"
-                          ? "upload-status-rejected"
-                          : "upload-status-ready"
+                    <div
+                      className={`documents-upload-file-type ${
+                        rejected
+                          ? "upload-file-type-rejected"
+                          : "upload-file-type-ready"
                       }`}
+                      aria-hidden="true"
                     >
-                      <span aria-hidden="true">
-                        {file.status === "Rejected" ? "●" : "●"}
+                      {file.extension}
+                    </div>
+
+                    <div className="documents-upload-file-info">
+                      <h3 title={file.name}>{file.name}</h3>
+                      <p className="documents-upload-meta">
+                        {formatFileSize(file.size)} · {file.addedAt}
+                      </p>
+
+                      <span
+                        className={`documents-upload-status ${
+                          rejected
+                            ? "upload-status-rejected"
+                            : "upload-status-ready"
+                        }`}
+                      >
+                        <span aria-hidden="true">●</span>
+                        {file.status}
                       </span>
 
-                      {file.status}
-                    </span>
+                      <p
+                        className={`documents-upload-detail ${
+                          rejected ? "upload-detail-rejected" : ""
+                        }`}
+                      >
+                        {file.detail}
+                      </p>
+                    </div>
 
-                    <p
-                      className={`documents-upload-detail ${
-                        file.status === "Rejected"
-                          ? "upload-detail-rejected"
-                          : ""
-                      }`}
+                    <button
+                      className="documents-upload-remove"
+                      type="button"
+                      onClick={() =>
+                        removeUploadAttempt(file.id, file.name)
+                      }
+                      aria-label={`Remove ${file.name} from recent activity`}
                     >
-                      {file.detail}
-                    </p>
-                  </div>
-
-                  <button
-                    className="documents-upload-remove"
-                    type="button"
-                    onClick={() => handleRemoveFile(file.id, file.name)}
-                    aria-label={`Remove ${file.name} from recent activity`}
-                  >
-                    Remove
-                  </button>
-                </article>
-              ))}
+                      Remove
+                    </button>
+                  </article>
+                );
+              })}
             </div>
           )}
 
           <p className="documents-upload-note">
-            Recent activity is held in the current page session. Removing an
-            item clears its entry from this list; it does not delete a file
-            from your device or secure storage.
+            This list exists only in the current page session. Removing
+            an entry does not delete a file from your device or storage.
           </p>
         </section>
 
         <section
           className="documents-stats"
-          aria-label="Document statistics"
+          aria-label="Demo document statistics"
         >
           <article className="document-stat-card">
             <span className="document-stat-icon" aria-hidden="true">
               ▤
             </span>
-
             <div>
-              <p>Total Documents</p>
-              <h2>{documents.length}</h2>
+              <p>Sample Documents</p>
+              <h2>{demoDocuments.length}</h2>
             </div>
           </article>
 
@@ -437,12 +466,9 @@ export default function Documents() {
             <span className="document-stat-icon" aria-hidden="true">
               🔒
             </span>
-
             <div>
-              <p>Protected Files</p>
-              <h2>
-                {documents.filter((doc) => doc.access === "Protected").length}
-              </h2>
+              <p>Marked Protected (Demo)</p>
+              <h2>{protectedCount}</h2>
             </div>
           </article>
 
@@ -450,11 +476,10 @@ export default function Documents() {
             <span className="document-stat-icon" aria-hidden="true">
               ◈
             </span>
-
             <div>
               <p>Categories</p>
               <h2>
-                {new Set(documents.map((doc) => doc.category)).size}
+                {new Set(demoDocuments.map((doc) => doc.category)).size}
               </h2>
             </div>
           </article>
@@ -464,39 +489,54 @@ export default function Documents() {
           <div className="documents-panel-heading">
             <div>
               <h2>All Documents</h2>
-              <p>Search and filter your available files.</p>
+              <p>Search and filter the sample document list.</p>
             </div>
-
             <span className="documents-count">
               {filteredDocuments.length}{" "}
-              {filteredDocuments.length === 1 ? "file" : "files"}
+              {filteredDocuments.length === 1 ? "record" : "records"}
             </span>
           </div>
 
           <div className="documents-filters">
             <label className="documents-search">
               <span aria-hidden="true">⌕</span>
-
               <input
                 type="search"
-                placeholder="Search by document or owner..."
+                placeholder="Search document, owner, or category..."
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
+                aria-label="Search documents"
               />
             </label>
 
             <label className="documents-category">
-              <span className="visually-hidden">Filter by category</span>
-
+              <span className="visually-hidden">
+                Filter by category
+              </span>
               <select
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
               >
                 <option value="All">All Categories</option>
-                <option value="Legal">Legal</option>
-                <option value="Contracts">Contracts</option>
-                <option value="Finance">Finance</option>
-                <option value="Policies">Policies</option>
+                {CATEGORIES.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="documents-category">
+              <span className="visually-hidden">
+                Filter by demo status
+              </span>
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+              >
+                <option value="All">All Demo Statuses</option>
+                <option value="Protected">Marked Protected</option>
+                <option value="Restricted">Marked Restricted</option>
               </select>
             </label>
           </div>
@@ -509,47 +549,42 @@ export default function Documents() {
                   <th>Category</th>
                   <th>Owner</th>
                   <th>Last Updated</th>
-                  <th>Security</th>
+                  <th>Demo Status</th>
                   <th>Action</th>
                 </tr>
               </thead>
 
               <tbody>
-                {filteredDocuments.map((document) => (
-                  <tr key={document.id}>
+                {filteredDocuments.map((doc) => (
+                  <tr key={doc.id}>
                     <td>
                       <div className="document-name-cell">
-                        <span className="document-file-icon">PDF</span>
-                        <span>{document.name}</span>
+                        <span className="document-file-icon">
+                          {getExtension(doc.name)}
+                        </span>
+                        <span>{doc.name}</span>
                       </div>
                     </td>
-
-                    <td>{document.category}</td>
-                    <td>{document.owner}</td>
-                    <td>{document.updated}</td>
-
+                    <td>{doc.category}</td>
+                    <td>{doc.owner}</td>
+                    <td>{doc.updated}</td>
                     <td>
                       <span
                         className={`document-security ${
-                          document.access === "Protected"
+                          doc.status === "Protected"
                             ? "security-protected"
                             : "security-restricted"
                         }`}
                       >
                         <span aria-hidden="true">●</span>
-                        {document.access}
+                        {doc.status}
                       </span>
                     </td>
-
                     <td>
                       <button
                         className="document-action-btn"
                         type="button"
-                        onClick={() =>
-                          setMessage(
-                            `${document.name}: viewing and permission controls will be connected to the secure backend next.`,
-                          )
-                        }
+                        onClick={() => handleViewDetails(doc)}
                       >
                         View details
                       </button>
@@ -561,18 +596,11 @@ export default function Documents() {
                   <tr>
                     <td colSpan={6} className="documents-empty">
                       <span aria-hidden="true">⌕</span>
-
-                      <strong>No documents found</strong>
-
-                      <p>Try another search term or category.</p>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSearch("");
-                          setCategory("All");
-                        }}
-                      >
+                      <strong>No matching records</strong>
+                      <p>
+                        Try another search term or change the filters.
+                      </p>
+                      <button type="button" onClick={clearFilters}>
                         Clear filters
                       </button>
                     </td>
@@ -583,7 +611,10 @@ export default function Documents() {
           </div>
 
           <p className="documents-demo-note">
-            Demo records only — secure access must be enforced by the backend.
+            Demo records only. The word “Protected” here is a sample
+            label, not proof of encryption or authorization. The backend
+            must verify the signed-in user’s permission for every
+            document request.
           </p>
         </section>
 

@@ -1,394 +1,591 @@
-
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import "./Dashboard.css";
 
+type DocumentStatus = "Protected" | "Needs review" | "Restricted";
+type AuditStatus = "Allowed" | "Denied" | "Revoked" | "Updated";
+
 type DocumentItem = {
-  id: number;
+  id: string;
   name: string;
   category: string;
   owner: string;
   updated: string;
-  access: "Private" | "Shared";
-  status: "Protected" | "Review";
+  status: DocumentStatus;
+  sharing: "Private" | "Shared";
 };
 
-type Theme = "light" | "dark";
+type AuditEvent = {
+  id: number;
+  action: string;
+  document: string;
+  actor: string;
+  time: string;
+  status: AuditStatus;
+};
 
 const initialDocuments: DocumentItem[] = [
   {
-    id: 1,
+    id: "DOC-1001",
     name: "Employment Agreement.pdf",
     category: "Legal",
-    owner: "You",
+    owner: "Hari",
     updated: "Today",
-    access: "Private",
     status: "Protected",
+    sharing: "Private",
   },
   {
-    id: 2,
+    id: "DOC-1002",
     name: "Client Contract.pdf",
     category: "Contracts",
-    owner: "You",
+    owner: "Hari",
     updated: "Yesterday",
-    access: "Shared",
     status: "Protected",
+    sharing: "Shared",
   },
   {
-    id: 3,
+    id: "DOC-1003",
     name: "Financial Report.xlsx",
     category: "Finance",
-    owner: "You",
-    updated: "20 Oct 2026",
-    access: "Private",
-    status: "Review",
+    owner: "Hari",
+    updated: "22 Oct 2026",
+    status: "Needs review",
+    sharing: "Private",
+  },
+  {
+    id: "DOC-1004",
+    name: "Project Blueprint.docx",
+    category: "Engineering",
+    owner: "Hari",
+    updated: "21 Oct 2026",
+    status: "Protected",
+    sharing: "Shared",
   },
 ];
 
-function getSavedTheme(): Theme {
-  try {
-    return localStorage.getItem("trustvault-theme") === "dark"
-      ? "dark"
-      : "light";
-  } catch {
-    return "light";
-  }
-}
+const sampleAuditEvents: AuditEvent[] = [
+  {
+    id: 1,
+    action: "Document access",
+    document: "Employment Agreement.pdf",
+    actor: "Hari",
+    time: "Today · 10:42 AM",
+    status: "Allowed",
+  },
+  {
+    id: 2,
+    action: "Access attempt",
+    document: "Financial Report.xlsx",
+    actor: "Unverified user",
+    time: "Today · 10:18 AM",
+    status: "Denied",
+  },
+  {
+    id: 3,
+    action: "Permission revoked",
+    document: "Client Contract.pdf",
+    actor: "Hari",
+    time: "Today · 09:55 AM",
+    status: "Revoked",
+  },
+  {
+    id: 4,
+    action: "Document updated",
+    document: "Project Blueprint.docx",
+    actor: "Hari",
+    time: "Yesterday · 04:20 PM",
+    status: "Updated",
+  },
+];
 
-function Dashboard() {
+const navigation = [
+  { label: "Dashboard", path: "/dashboard", icon: "▦" },
+  { label: "My Documents", path: "/documents", icon: "▤" },
+  { label: "Shared Documents", path: "/shared-documents", icon: "⇄" },
+  { label: "Permissions", path: "/permissions", icon: "♙" },
+  { label: "Audit Logs", path: "/audit-log", icon: "◷" },
+  { label: "Team", path: "/team", icon: "♧" },
+  { label: "Settings", path: "/settings", icon: "⚙" },
+];
+
+export default function Dashboard() {
+  const location = useLocation();
   const navigate = useNavigate();
-  const [search, setSearch] = useState("");
-  const [activeNav, setActiveNav] = useState("Dashboard");
-  const [theme, setTheme] = useState<Theme>(getSavedTheme);
 
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
+  const [search, setSearch] = useState("");
+  const [auditFilter, setAuditFilter] = useState("All events");
+  const [documents] = useState(initialDocuments);
+
+  const [darkMode, setDarkMode] = useState(() => {
+    try {
+      return localStorage.getItem("trustvault-theme") === "dark";
+    } catch {
+      return false;
+    }
+  });
+
+  const protectedCount = documents.filter(
+    (document) => document.status === "Protected"
+  ).length;
+
+  const reviewCount = documents.filter(
+    (document) => document.status === "Needs review"
+  ).length;
+
+  const sharedCount = documents.filter(
+    (document) => document.sharing === "Shared"
+  ).length;
+
+  const filteredDocuments = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    if (!query) return documents;
+
+    return documents.filter((document) =>
+      [
+        document.name,
+        document.category,
+        document.owner,
+        document.status,
+        document.sharing,
+        document.id,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query)
+    );
+  }, [documents, search]);
+
+  const filteredAuditEvents = useMemo(() => {
+    if (auditFilter === "All events") return sampleAuditEvents;
+
+    return sampleAuditEvents.filter(
+      (event) => event.status === auditFilter
+    );
+  }, [auditFilter]);
+
+  function toggleTheme() {
+    const nextTheme = !darkMode;
+    setDarkMode(nextTheme);
 
     try {
-      localStorage.setItem("trustvault-theme", theme);
+      localStorage.setItem(
+        "trustvault-theme",
+        nextTheme ? "dark" : "light"
+      );
     } catch {
-      // The theme still applies to the current page.
+      // Theme still changes for the current page session.
     }
-  }, [theme]);
+  }
 
-  const toggleTheme = () => {
-    setTheme((current) => (current === "light" ? "dark" : "light"));
-  };
-
-  const documents = initialDocuments.filter((document) =>
-    `${document.name} ${document.category} ${document.owner}`
-      .toLowerCase()
-      .includes(search.toLowerCase())
-  );
-
-  const navigation = [
-    { name: "Dashboard", icon: "▦", path: "/dashboard" },
-    { name: "My Documents", icon: "▤", path: "/documents" },
-    { name: "Shared Documents", icon: "⇄", path: "/shared-documents" },
-    { name: "Permissions", icon: "♙", path: "/permissions" },
-    { name: "Audit Logs", icon: "◷", path: "/audit-logs" },
-  ];
+  function handleUploadClick() {
+    navigate("/documents");
+  }
 
   return (
-    <main className={`dashboard theme-${theme}`}>
-      <aside className="dashboard-sidebar">
-        <Link to="/dashboard" className="dashboard-brand">
-          <span className="brand-shield">◆</span>
+    <div className={`tv-app ${darkMode ? "tv-dark" : "tv-light"}`}>
+      <aside className="tv-sidebar">
+        <Link to="/dashboard" className="tv-brand">
+          <span className="tv-brand-mark">◆</span>
           <span>
             <strong>TrustVault</strong>
             <small>SECURE WORKSPACE</small>
           </span>
         </Link>
 
-        <div className="sidebar-label">WORKSPACE</div>
+        <p className="tv-nav-label">WORKSPACE</p>
 
-        <nav className="dashboard-nav" aria-label="Main navigation">
-          {navigation.map((item) => (
-            <button
-              type="button"
-              key={item.name}
-              className={`nav-item ${
-                activeNav === item.name ? "nav-item-active" : ""
-              }`}
-              onClick={() => {
-                setActiveNav(item.name);
-                navigate(item.path);
-              }}
-            >
-              <span className="nav-icon">{item.icon}</span>
-              {item.name}
-            </button>
-          ))}
+        <nav className="tv-navigation" aria-label="Main navigation">
+          {navigation.map((item) => {
+            const active = location.pathname === item.path;
+
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`tv-nav-link ${active ? "active" : ""}`}
+              >
+                <span className="tv-nav-icon" aria-hidden="true">
+                  {item.icon}
+                </span>
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
         </nav>
 
-        <div className="sidebar-security">
-          <span className="security-lock">♙</span>
-          <strong>Security first</strong>
-          <p>Every document deserves controlled access.</p>
-          <span className="security-indicator">
-            <span /> Security workspace
+        <div className="tv-sidebar-security">
+          <span className="tv-security-icon">♙</span>
+          <h3>Security first</h3>
+          <p>
+            Every document should have controlled access and an accountable
+            activity history.
+          </p>
+          <span className="tv-live-indicator">
+            <i /> Demo workspace
           </span>
         </div>
 
-        <Link to="/login" className="sidebar-logout">
-          ↪ Sign out
-        </Link>
+        <button
+          className="tv-signout"
+          type="button"
+          onClick={() => navigate("/login")}
+        >
+          ↪ <span>Sign out</span>
+        </button>
       </aside>
 
-      <section className="dashboard-main">
-        <header className="dashboard-topbar">
+      <main className="tv-main">
+        <header className="tv-topbar">
           <div>
-            <span className="breadcrumb">Workspace / Overview</span>
+            <p className="tv-breadcrumb">Workspace / Overview</p>
             <h1>Security Dashboard</h1>
           </div>
 
-          <div className="topbar-actions">
+          <div className="tv-topbar-actions">
             <button
               type="button"
-              className="theme-toggle"
+              className="tv-secondary-button"
               onClick={toggleTheme}
-              aria-label={`Switch to ${
-                theme === "light" ? "dark" : "light"
-              } mode`}
-              aria-pressed={theme === "dark"}
+              aria-label="Toggle light and dark theme"
             >
-              <span aria-hidden="true">
-                {theme === "light" ? "☾" : "☀"}
-              </span>
-              {theme === "light" ? "Dark Mode" : "Light Mode"}
+              {darkMode ? "☀ Light Mode" : "☾ Dark Mode"}
             </button>
 
-            <div className="profile-chip">
-              <span className="profile-avatar">U</span>
+            <Link to="/profile" className="tv-user-profile">
+              <span className="tv-user-avatar">H</span>
               <span>
-                <strong>Workspace User</strong>
-                <small>Document Owner</small>
+                <strong>Hari</strong>
+                <small>Workspace User</small>
               </span>
-            </div>
+            </Link>
           </div>
         </header>
 
-        <section className="dashboard-welcome">
-          <div>
-            <span className="eyebrow">YOUR SECURE WORKSPACE</span>
+        <section className="tv-hero">
+          <div className="tv-hero-content">
+            <p className="tv-eyebrow">YOUR SECURE WORKSPACE</p>
             <h2>Documents under your control.</h2>
             <p>
-              Manage files, review access and monitor document activity
+              Manage files, review access, and monitor document activity
               from one place.
             </p>
+
+            <div className="tv-hero-actions">
+              <button
+                type="button"
+                className="tv-primary-button"
+                onClick={handleUploadClick}
+              >
+                + Upload document
+              </button>
+
+              <Link to="/permissions" className="tv-hero-link">
+                Manage access →
+              </Link>
+            </div>
           </div>
 
-          <div className="welcome-emblem" aria-hidden="true">
-            <span className="emblem-document">▤</span>
-            <span className="emblem-lock">♙</span>
-            <span className="emblem-key">⚿</span>
+          <div className="tv-hero-art" aria-hidden="true">
+            <div className="tv-art-ring">
+              <span>▤</span>
+              <span>♙</span>
+              <span>♢</span>
+            </div>
           </div>
         </section>
 
-        <section className="dashboard-stats" aria-label="Document summary">
-          <article className="stat-card">
-            <div className="stat-top">
-              <span>Total Documents</span>
-              <span className="stat-icon">▤</span>
+        <div className="tv-demo-notice" role="note">
+          <span aria-hidden="true">ⓘ</span>
+          <span>
+            <strong>Demo data:</strong> The figures and activity below are
+            illustrative frontend examples, not verified security events.
+          </span>
+        </div>
+
+        <section className="tv-metrics" aria-label="Workspace summary">
+          <article className="tv-metric-card">
+            <div className="tv-metric-heading">
+              <span>Total documents</span>
+              <span className="tv-metric-icon gold">▤</span>
             </div>
-            <strong className="stat-value">12</strong>
-            <span className="stat-caption">Documents in workspace</span>
+            <strong className="tv-metric-number">{documents.length}</strong>
+            <p>Documents in demo workspace</p>
           </article>
 
-          <article className="stat-card">
-            <div className="stat-top">
-              <span>Shared Documents</span>
-              <span className="stat-icon">⇄</span>
+          <article className="tv-metric-card">
+            <div className="tv-metric-heading">
+              <span>Shared documents</span>
+              <span className="tv-metric-icon blue">⇄</span>
             </div>
-            <strong className="stat-value">05</strong>
-            <span className="stat-caption">
-              Shared with authorised users
-            </span>
+            <strong className="tv-metric-number">{sharedCount}</strong>
+            <p>Marked as shared in demo data</p>
           </article>
 
-          <article className="stat-card">
-            <div className="stat-top">
-              <span>Protected</span>
-              <span className="stat-icon positive-icon">✓</span>
+          <article className="tv-metric-card">
+            <div className="tv-metric-heading">
+              <span>Protected status</span>
+              <span className="tv-metric-icon green">✓</span>
             </div>
-            <strong className="stat-value positive-text">11</strong>
-            <span className="stat-caption">
-              Marked protected in demo data
-            </span>
+            <strong className="tv-metric-number green-text">
+              {protectedCount}
+            </strong>
+            <p>Marked protected in demo data</p>
           </article>
 
-          <article className="stat-card">
-            <div className="stat-top">
-              <span>Needs Review</span>
-              <span className="stat-icon warning-icon">!</span>
+          <article className="tv-metric-card">
+            <div className="tv-metric-heading">
+              <span>Needs review</span>
+              <span className="tv-metric-icon amber">!</span>
             </div>
-            <strong className="stat-value warning-text">01</strong>
-            <span className="stat-caption">Requires access review</span>
+            <strong className="tv-metric-number amber-text">
+              {reviewCount}
+            </strong>
+            <p>Documents requiring review</p>
           </article>
         </section>
 
-        <section className="dashboard-grid">
-          <article className="panel documents-panel">
-            <div className="panel-heading">
+        <section className="tv-content-grid">
+          <article className="tv-panel tv-documents-panel">
+            <div className="tv-panel-header">
               <div>
-                <h3>Recent Documents</h3>
-                <p>Review your latest files and access status.</p>
+                <h2>Recent Documents</h2>
+                <p>Search and review your document list.</p>
               </div>
 
               <button
-                className="outline-button"
                 type="button"
-                onClick={() =>
-                  window.alert("Document upload will be implemented next.")
-                }
+                className="tv-outline-button"
+                onClick={handleUploadClick}
               >
-                + Upload Document
+                + Upload
               </button>
             </div>
 
-            <label className="search-box">
+            <label className="tv-search-box">
               <span aria-hidden="true">⌕</span>
               <input
                 type="search"
-                placeholder="Search documents or categories..."
+                placeholder="Search by name, category, owner, or ID..."
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
+                aria-label="Search documents"
               />
             </label>
 
-            <div className="document-list">
-              {documents.map((document) => (
-                <div className="document-row" key={document.id}>
-                  <div className="document-icon">▤</div>
+            <div className="tv-document-list">
+              {filteredDocuments.map((document) => (
+                <div className="tv-document-row" key={document.id}>
+                  <div className="tv-file-icon">▤</div>
 
-                  <div className="document-info">
+                  <div className="tv-document-info">
                     <strong>{document.name}</strong>
                     <span>
-                      {document.category} · {document.updated}
+                      {document.category} · {document.updated} · {document.id}
                     </span>
                   </div>
 
-                  <span
-                    className={`access-badge ${
-                      document.access === "Shared"
-                        ? "shared-badge"
-                        : "private-badge"
-                    }`}
-                  >
-                    {document.access}
-                  </span>
+                  <div className="tv-document-badges">
+                    <span
+                      className={`tv-badge ${
+                        document.sharing === "Shared" ? "shared" : "private"
+                      }`}
+                    >
+                      {document.sharing}
+                    </span>
 
-                  <span
-                    className={`status-badge ${
-                      document.status === "Protected"
-                        ? "protected-badge"
-                        : "review-badge"
-                    }`}
-                  >
-                    {document.status === "Protected" ? "✓ " : "! "}
-                    {document.status}
-                  </span>
+                    <span
+                      className={`tv-badge ${
+                        document.status === "Protected"
+                          ? "protected"
+                          : "review"
+                      }`}
+                    >
+                      {document.status}
+                    </span>
+                  </div>
                 </div>
               ))}
 
-              {documents.length === 0 && (
-                <p className="empty-state">
-                  No documents match your search.
-                </p>
+              {filteredDocuments.length === 0 && (
+                <div className="tv-empty-state">
+                  <span>⌕</span>
+                  <strong>No matching documents</strong>
+                  <p>Try a different name, category, or document ID.</p>
+                </div>
               )}
             </div>
 
-            <p className="demo-note">
-              Demo records only · Live documents will come from the backend.
-            </p>
+            <div className="tv-panel-footer">
+              <span>Showing {filteredDocuments.length} demo documents</span>
+              <Link to="/documents">View all documents →</Link>
+            </div>
           </article>
 
-          <article className="panel activity-panel">
-            <div className="panel-heading">
+          <article className="tv-panel tv-overview-panel">
+            <div className="tv-panel-header">
               <div>
-                <h3>Security Overview</h3>
-                <p>Illustrative access summary</p>
+                <h2>Access Overview</h2>
+                <p>Document status summary</p>
               </div>
-              <span className="gold-shield">◆</span>
+              <span className="tv-metric-icon gold">◆</span>
             </div>
 
-            <div className="chart-summary">
-              <div>
-                <strong>85%</strong>
-                <span>Illustrative protection score</span>
-              </div>
-              <span className="moderate-tag">Demo</span>
+            <div className="tv-overview-summary">
+              <strong>{protectedCount}</strong>
+              <span>documents marked protected</span>
             </div>
 
             <div
-              className="chart-bars"
+              className="tv-bar-chart"
               aria-label="Illustrative document status chart"
             >
-              <div className="chart-column">
-                <span className="bar-value">11</span>
-                <div className="bar-track">
+              <div className="tv-chart-column">
+                <strong>{protectedCount}</strong>
+                <div className="tv-chart-track">
                   <div
-                    className="bar-fill bar-green"
-                    style={{ height: "88%" }}
+                    className="tv-chart-bar green-bar"
+                    style={{
+                      height: `${
+                        (protectedCount / Math.max(documents.length, 1)) * 100
+                      }%`,
+                    }}
                   />
                 </div>
-                <span className="bar-label">Protected</span>
+                <span>Protected</span>
               </div>
 
-              <div className="chart-column">
-                <span className="bar-value">1</span>
-                <div className="bar-track">
+              <div className="tv-chart-column">
+                <strong>{reviewCount}</strong>
+                <div className="tv-chart-track">
                   <div
-                    className="bar-fill bar-yellow"
-                    style={{ height: "18%" }}
+                    className="tv-chart-bar amber-bar"
+                    style={{
+                      height: `${
+                        (reviewCount / Math.max(documents.length, 1)) * 100
+                      }%`,
+                    }}
                   />
                 </div>
-                <span className="bar-label">Review</span>
+                <span>Review</span>
               </div>
 
-              <div className="chart-column">
-                <span className="bar-value">0</span>
-                <div className="bar-track">
-                  <div
-                    className="bar-fill bar-red"
-                    style={{ height: "3%" }}
-                  />
+              <div className="tv-chart-column">
+                <strong>—</strong>
+                <div className="tv-chart-track">
+                  <div className="tv-chart-bar red-bar" style={{ height: 0 }} />
                 </div>
-                <span className="bar-label">Blocked</span>
+                <span>Blocked</span>
               </div>
             </div>
 
-            <div className="chart-legend">
-              <span><i className="legend-green" /> Protected</span>
-              <span><i className="legend-yellow" /> Review</span>
-              <span><i className="legend-red" /> Blocked</span>
-            </div>
+            <p className="tv-chart-disclaimer">
+              Blocked attempts are not calculated from real server logs yet.
+            </p>
 
-            <div className="audit-callout">
-              <span className="audit-icon">◷</span>
-              <div>
-                <strong>Audit trail</strong>
-                <p>Track who accessed a document and when.</p>
-              </div>
-            </div>
+            <Link to="/permissions" className="tv-callout">
+              <span className="tv-callout-icon">♙</span>
+              <span>
+                <strong>Review document permissions</strong>
+                <small>Check who should be able to access each file.</small>
+              </span>
+              <span className="tv-callout-arrow">→</span>
+            </Link>
 
-            <button
-              className="audit-button"
-              type="button"
-              onClick={() => navigate("/audit-logs")}
-            >
-              View Audit Logs →
-            </button>
+            <Link to="/audit-log" className="tv-callout">
+              <span className="tv-callout-icon">◷</span>
+              <span>
+                <strong>Inspect audit trail</strong>
+                <small>Review access, denial, and revocation events.</small>
+              </span>
+              <span className="tv-callout-arrow">→</span>
+            </Link>
           </article>
         </section>
 
-        <footer className="dashboard-footer">
-          <span>TrustVault · Secure Document Sharing</span>
-          <span>Access should always be intentional.</span>
+        <section className="tv-panel tv-audit-panel">
+          <div className="tv-panel-header tv-audit-heading">
+            <div>
+              <h2>Recent Audit Activity</h2>
+              <p>Illustrative events for the dashboard preview.</p>
+            </div>
+
+            <div className="tv-audit-actions">
+              <label className="tv-filter-label">
+                <span className="tv-sr-only">Filter audit events</span>
+                <select
+                  value={auditFilter}
+                  onChange={(event) => setAuditFilter(event.target.value)}
+                >
+                  <option>All events</option>
+                  <option>Allowed</option>
+                  <option>Denied</option>
+                  <option>Revoked</option>
+                  <option>Updated</option>
+                </select>
+              </label>
+
+              <Link to="/audit-log" className="tv-outline-button">
+                View audit logs
+              </Link>
+            </div>
+          </div>
+
+          <div className="tv-table-wrap">
+            <table className="tv-audit-table">
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>Document</th>
+                  <th>Actor</th>
+                  <th>Time</th>
+                  <th>Result</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {filteredAuditEvents.map((event) => (
+                  <tr key={event.id}>
+                    <td>{event.action}</td>
+                    <td>{event.document}</td>
+                    <td>{event.actor}</td>
+                    <td>{event.time}</td>
+                    <td>
+                      <span
+                        className={`tv-audit-status ${event.status.toLowerCase()}`}
+                      >
+                        {event.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+
+                {filteredAuditEvents.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="tv-table-empty">
+                      No events match this filter.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="tv-audit-note">
+            <span>ⓘ</span>
+            <p>
+              A production audit trail must be recorded and protected by the
+              backend. Client-side sample events can be edited and are not
+              proof of actual access.
+            </p>
+          </div>
+        </section>
+
+        <footer className="tv-footer">
+          <span>TrustVault · Secure document sharing</span>
+          <span>Security depends on server-side enforcement and testing.</span>
         </footer>
-      </section>
-    </main>
+      </main>
+    </div>
   );
 }
-
-export default Dashboard;

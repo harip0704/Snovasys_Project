@@ -1,10 +1,9 @@
+
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import "./Login.css";
 
 export default function Login() {
-  
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -30,7 +29,7 @@ export default function Login() {
 
     try {
       // TODO: Connect to the Spring Boot login API.
-      // Do not treat frontend validation as authentication.
+      // Frontend validation alone is not authentication.
       setError(
         "Authentication is not connected yet. Please connect the backend."
       );
@@ -153,7 +152,9 @@ export default function Login() {
           <div className="login-heading">
             <span className="welcome-label">WELCOME BACK</span>
             <h2>Sign in to your account</h2>
-            <p>Enter your credentials to access your secure workspace.</p>
+            <p>
+              Enter your credentials to access your secure workspace.
+            </p>
           </div>
 
           <form onSubmit={handleSubmit} noValidate>
@@ -219,7 +220,9 @@ export default function Login() {
                   type="button"
                   className="password-toggle"
                   onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-label={
+                    showPassword ? "Hide password" : "Show password"
+                  }
                 >
                   {showPassword ? "Hide" : "Show"}
                 </button>
@@ -231,11 +234,14 @@ export default function Login() {
                 <input
                   type="checkbox"
                   checked={rememberMe}
-                  onChange={(event) => setRememberMe(event.target.checked)}
+                  onChange={(event) =>
+                    setRememberMe(event.target.checked)
+                  }
                 />
                 <span className="custom-checkbox" />
                 Remember me
               </label>
+
               <span className="session-note">Secure sign-in</span>
             </div>
 
@@ -264,6 +270,12 @@ export default function Login() {
               )}
             </button>
           </form>
+
+          {/* Create Account link */}
+          <p className="signup-prompt">
+            Don't have an account?{" "}
+            <Link to="/signup">Create account</Link>
+          </p>
 
           <div className="divider">
             <span />
@@ -306,7 +318,7 @@ export default function Login() {
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path
                   fill="currentColor"
-                  d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.54v-2.1c-3.1.67-3.76-1.32-3.76-1.32-.5-1.28-1.23-1.62-1.23-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.15 1.71 1.15.99 1.7 2.6 1.21 3.23.92.1-.72.39-1.21.71-1.49-2.48-.28-5.09-1.24-5.09-5.52 0-1.22.44-2.22 1.15-3-.12-.28-.5-1.42.11-2.96 0 0 .94-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.11-1.44 3.04-1.14 3.04-1.14.61 1.54.23 2.68.12 2.96.71.78 1.14 1.78 1.14 3.01 0 4.29-2.61 5.23-5.1 5.5.4.35.75 1.03.75 2.08v3.07c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z"
+                  d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.54v-2.1c-3.1.67-3.76-1.32-3.76-1.32-.5-1.28-1.23-1.62-1.23-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.15 1.71 1.15.99 1.7 2.6 1.21 3.23.92.1-.72.39-1.21.71-1.49-2.48-.28-5.09-1.24-5.09-5.52 0-1.22.44-2.22 1.15-3-.12-.28-.5-1.42.11-2.96 0 0 .94-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.11-1.44 3.04-.3 3.04-1.14.61 1.54 3.04-1.14 3.04 1.14.61 1.54.12 2.68.12 2.96.71.78 1.14 1.78 1.14 3.01 0 4.29-2.61 5.23-5.1 5.5.4.35.75 1.03.75 2.08v3.07c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z"
                 />
               </svg>
               GitHub
@@ -326,10 +338,12 @@ export default function Login() {
                 <path d="M12 16.5V18" />
               </svg>
             </span>
+
             <span className="passkey-copy">
               <strong>Use a passkey</strong>
               <small>Face recognition, fingerprint or device PIN</small>
             </span>
+
             <span className="passkey-arrow">→</span>
           </button>
 
