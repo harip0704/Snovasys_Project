@@ -71,6 +71,13 @@ const initialPermissions: PermissionRecord[] = [
   },
 ];
 
+const documents = [
+  { name: "Client Contract.pdf", category: "Contracts" },
+  { name: "Security Policy.pdf", category: "Policies" },
+  { name: "Project Proposal.docx", category: "Other" },
+  { name: "Financial Report.pdf", category: "Finance" },
+];
+
 function getInitialTheme(): Theme {
   try {
     return localStorage.getItem("trustvault-theme") === "dark"
@@ -81,16 +88,35 @@ function getInitialTheme(): Theme {
   }
 }
 
+function getTodayLabel() {
+  return new Date().toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 export default function Permissions() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
-  const [permissions] = useState<PermissionRecord[]>(initialPermissions);
+  const [permissions, setPermissions] =
+    useState<PermissionRecord[]>(initialPermissions);
+
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [roleFilter, setRoleFilter] = useState("All roles");
   const [categoryFilter, setCategoryFilter] = useState("All categories");
+
   const [notice, setNotice] = useState("");
   const [selectedPermission, setSelectedPermission] =
     useState<PermissionRecord | null>(null);
+
+  const [showGrantForm, setShowGrantForm] = useState(false);
+  const [grantDocument, setGrantDocument] = useState("");
+  const [grantUser, setGrantUser] = useState("");
+  const [grantEmail, setGrantEmail] = useState("");
+  const [grantRole, setGrantRole] =
+    useState<PermissionRole>("Viewer");
+  const [grantExpiry, setGrantExpiry] = useState("");
 
   function toggleTheme() {
     const nextTheme = theme === "light" ? "dark" : "light";
@@ -99,7 +125,7 @@ export default function Permissions() {
     try {
       localStorage.setItem("trustvault-theme", nextTheme);
     } catch {
-      // The current page theme still changes if storage is unavailable.
+      // Theme still changes for the current page session.
     }
   }
 
@@ -107,13 +133,19 @@ export default function Permissions() {
     const query = search.trim().toLowerCase();
 
     return permissions.filter((item) => {
-      const matchesSearch =
-        item.document.toLowerCase().includes(query) ||
-        item.user.toLowerCase().includes(query) ||
-        item.email.toLowerCase().includes(query);
+      const matchesSearch = [
+        item.document,
+        item.user,
+        item.email,
+        item.category,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
 
       const matchesStatus =
-        statusFilter === "All statuses" || item.status === statusFilter;
+        statusFilter === "All statuses" ||
+        item.status === statusFilter;
 
       const matchesRole =
         roleFilter === "All roles" || item.role === roleFilter;
@@ -123,10 +155,19 @@ export default function Permissions() {
         item.category === categoryFilter;
 
       return (
-        matchesSearch && matchesStatus && matchesRole && matchesCategory
+        matchesSearch &&
+        matchesStatus &&
+        matchesRole &&
+        matchesCategory
       );
     });
-  }, [permissions, search, statusFilter, roleFilter, categoryFilter]);
+  }, [
+    permissions,
+    search,
+    statusFilter,
+    roleFilter,
+    categoryFilter,
+  ]);
 
   const activeCount = permissions.filter(
     (item) => item.status === "Active",
@@ -151,9 +192,122 @@ export default function Permissions() {
     setCategoryFilter("All categories");
   }
 
-  function showDemoNotice(action: string, item: PermissionRecord) {
+  function openGrantForm() {
+    setGrantDocument("");
+    setGrantUser("");
+    setGrantEmail("");
+    setGrantRole("Viewer");
+    setGrantExpiry("");
+    setNotice("");
+    setShowGrantForm(true);
+  }
+
+  function closeGrantForm() {
+    setShowGrantForm(false);
+  }
+
+  function handleGrantPermission(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    const cleanUser = grantUser.trim();
+    const cleanEmail = grantEmail.trim().toLowerCase();
+
+    if (!grantDocument || !cleanUser || !cleanEmail) {
+      setNotice("Please complete all required fields.");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setNotice("Please enter a valid email address.");
+      return;
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    if (grantExpiry && grantExpiry < today) {
+      setNotice("Expiry date cannot be in the past.");
+      return;
+    }
+
+    const selectedDocument = documents.find(
+      (item) => item.name === grantDocument,
+    );
+
+    if (!selectedDocument) {
+      setNotice("Please select a valid document.");
+      return;
+    }
+
+    const duplicate = permissions.some(
+      (item) =>
+        item.document === grantDocument &&
+        item.email.toLowerCase() === cleanEmail &&
+        item.status !== "Revoked" &&
+        item.status !== "Expired",
+    );
+
+    if (duplicate) {
+      setNotice(
+        "This user already has an active permission for this document.",
+      );
+      return;
+    }
+
+    const expiryDate = grantExpiry
+      ? new Date(`${grantExpiry}T12:00:00`).toLocaleDateString(
+          "en-GB",
+          {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          },
+        )
+      : "No expiry";
+
+    const newPermission: PermissionRecord = {
+      id: Date.now(),
+      document: selectedDocument.name,
+      category: selectedDocument.category,
+      user: cleanUser,
+      email: cleanEmail,
+      role: grantRole,
+      grantedBy: "Hari",
+      grantedDate: getTodayLabel(),
+      expiryDate,
+      status: "Active",
+    };
+
+    setPermissions((current) => [newPermission, ...current]);
+    setShowGrantForm(false);
+    clearFilters();
+
     setNotice(
-      `${action}: ${item.document} — ${item.user}. Demo only; no backend changes have been made.`,
+      `Demo permission added for ${cleanUser} on ${selectedDocument.name}. Backend access has not changed.`,
+    );
+  }
+
+  function revokePermission(item: PermissionRecord) {
+    if (item.status === "Revoked" || item.status === "Expired") {
+      return;
+    }
+
+    setPermissions((current) =>
+      current.map((permission) =>
+        permission.id === item.id
+          ? {
+              ...permission,
+              status: "Revoked",
+              expiryDate: "Access revoked",
+            }
+          : permission,
+      ),
+    );
+
+    setSelectedPermission(null);
+    setNotice(
+      `Demo permission marked as revoked for ${item.user}. The backend has not been updated.`,
     );
   }
 
@@ -163,7 +317,11 @@ export default function Permissions() {
   }
 
   return (
-    <div className={`permissions-page ${theme === "dark" ? "theme-dark" : ""}`}>
+    <div
+      className={`permissions-page ${
+        theme === "dark" ? "theme-dark" : ""
+      }`}
+    >
       <header className="permissions-topbar">
         <Link
           className="permissions-brand"
@@ -178,7 +336,10 @@ export default function Permissions() {
         </Link>
 
         <div className="permissions-topbar-right">
-          <Link to="/dashboard" className="permissions-dashboard-link">
+          <Link
+            to="/dashboard"
+            className="permissions-dashboard-link"
+          >
             <span aria-hidden="true">⌂</span>
             Dashboard
           </Link>
@@ -187,7 +348,6 @@ export default function Permissions() {
             type="button"
             className="permissions-theme-toggle"
             onClick={toggleTheme}
-            aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
           >
             {theme === "light" ? "🌙 Dark Mode" : "☀️ Light Mode"}
           </button>
@@ -206,7 +366,9 @@ export default function Permissions() {
       <main className="permissions-content">
         <section className="permissions-heading">
           <div>
-            <p className="permissions-eyebrow">SECURITY & GOVERNANCE</p>
+            <p className="permissions-eyebrow">
+              SECURITY &amp; GOVERNANCE
+            </p>
             <h1>Permissions</h1>
             <p className="permissions-subtitle">
               Review who can access each document and monitor permission
@@ -217,11 +379,7 @@ export default function Permissions() {
           <button
             type="button"
             className="permissions-primary-button"
-            onClick={() =>
-              setNotice(
-                "Grant Permission form is planned as a sub-feature. No permission has been granted.",
-              )
-            }
+            onClick={openGrantForm}
           >
             + Grant Permission
           </button>
@@ -286,11 +444,12 @@ export default function Permissions() {
         <section className="permissions-panel">
           <div className="permissions-panel-heading">
             <div>
-              <h2>User & Document Access</h2>
+              <h2>User &amp; Document Access</h2>
               <p>
                 Inspect permission grants, roles, expiry dates, and statuses.
               </p>
             </div>
+
             <span className="permissions-count">
               {filteredPermissions.length} records
             </span>
@@ -375,7 +534,9 @@ export default function Permissions() {
                       <td>
                         <div className="permissions-document-cell">
                           <span className="permissions-file-icon">
-                            {item.document.endsWith(".pdf") ? "PDF" : "DOC"}
+                            {item.document.toLowerCase().endsWith(".pdf")
+                              ? "PDF"
+                              : "DOC"}
                           </span>
                           <div>
                             <strong>{item.document}</strong>
@@ -421,9 +582,7 @@ export default function Permissions() {
                               <button
                                 type="button"
                                 className="permissions-revoke-button"
-                                onClick={() =>
-                                  showDemoNotice("Revoke requested", item)
-                                }
+                                onClick={() => revokePermission(item)}
                               >
                                 Revoke
                               </button>
@@ -448,9 +607,8 @@ export default function Permissions() {
           </div>
 
           <p className="permissions-footnote">
-            Demo records only. Grant, edit, and revoke actions are not yet
-            connected to the backend. Real access must be checked on every
-            protected server request.
+            Demo records only. Grant and revoke actions currently update
+            frontend state only. Real access must be enforced by the backend.
           </p>
         </section>
 
@@ -471,10 +629,152 @@ export default function Permissions() {
         </footer>
       </main>
 
+      {/* Grant Permission Modal */}
+      {showGrantForm && (
+        <div
+          className="permissions-modal-backdrop"
+          onClick={closeGrantForm}
+        >
+          <section
+            className="permissions-modal grant-permission-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="grant-permission-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="permissions-modal-heading">
+              <div>
+                <p className="permissions-eyebrow">ACCESS CONTROL</p>
+                <h2 id="grant-permission-title">Grant Permission</h2>
+              </div>
+
+              <button
+                type="button"
+                className="permissions-modal-close"
+                onClick={closeGrantForm}
+                aria-label="Close grant permission form"
+              >
+                ×
+              </button>
+            </div>
+
+            <p className="grant-permission-description">
+              Select a document, identify the user, and choose the access role.
+            </p>
+
+            <form
+              className="grant-permission-form"
+              onSubmit={handleGrantPermission}
+            >
+              <div className="grant-form-field">
+                <label htmlFor="grant-document">Document</label>
+                <select
+                  id="grant-document"
+                  value={grantDocument}
+                  onChange={(event) => setGrantDocument(event.target.value)}
+                  required
+                >
+                  <option value="" disabled>
+                    Select a document
+                  </option>
+
+                  {documents.map((document) => (
+                    <option key={document.name} value={document.name}>
+                      {document.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grant-form-field">
+                <label htmlFor="grant-user-name">User name</label>
+                <input
+                  id="grant-user-name"
+                  type="text"
+                  value={grantUser}
+                  onChange={(event) => setGrantUser(event.target.value)}
+                  placeholder="Enter user's full name"
+                  maxLength={100}
+                  autoComplete="name"
+                  required
+                />
+              </div>
+
+              <div className="grant-form-field">
+                <label htmlFor="grant-user-email">User email</label>
+                <input
+                  id="grant-user-email"
+                  type="email"
+                  value={grantEmail}
+                  onChange={(event) => setGrantEmail(event.target.value)}
+                  placeholder="user@example.com"
+                  maxLength={254}
+                  autoComplete="email"
+                  required
+                />
+              </div>
+
+              <div className="grant-form-field">
+                <label htmlFor="grant-role">Access role</label>
+                <select
+                  id="grant-role"
+                  value={grantRole}
+                  onChange={(event) =>
+                    setGrantRole(event.target.value as PermissionRole)
+                  }
+                  required
+                >
+                  <option value="Viewer">Viewer — view document</option>
+                  <option value="Editor">Editor — edit document</option>
+                  <option value="Admin">Admin — manage access</option>
+                </select>
+              </div>
+
+              <div className="grant-form-field grant-form-full">
+                <label htmlFor="grant-expiry">Expiry date (optional)</label>
+                <input
+                  id="grant-expiry"
+                  type="date"
+                  value={grantExpiry}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(event) => setGrantExpiry(event.target.value)}
+                />
+                <small>
+                  Demo form only. The backend must verify user identity and
+                  enforce document permissions.
+                </small>
+              </div>
+
+              <div className="grant-form-warning">
+                <strong>Demo only:</strong> this adds a sample record to the
+                current page state. It does not grant real file access.
+              </div>
+
+              <div className="grant-form-actions">
+                <button
+                  type="button"
+                  className="permissions-reset-button"
+                  onClick={closeGrantForm}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  className="permissions-primary-button"
+                >
+                  Add demo permission
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {/* Permission Details Modal */}
       {selectedPermission && (
         <div
           className="permissions-modal-backdrop"
-          role="presentation"
           onClick={() => setSelectedPermission(null)}
         >
           <section
@@ -489,6 +789,7 @@ export default function Permissions() {
                 <p className="permissions-eyebrow">ACCESS RECORD</p>
                 <h2 id="permission-details-title">Permission details</h2>
               </div>
+
               <button
                 type="button"
                 className="permissions-modal-close"
@@ -539,17 +840,30 @@ export default function Permissions() {
             </dl>
 
             <p className="permissions-modal-note">
-              This is a sample record. Editing and saving permission changes
-              will be implemented with the backend.
+              This is a sample record. Changes are held in frontend state
+              only and are not proof of real access control.
             </p>
 
-            <button
-              type="button"
-              className="permissions-primary-button permissions-modal-done"
-              onClick={() => setSelectedPermission(null)}
-            >
-              Close details
-            </button>
+            <div className="permissions-modal-actions">
+              <button
+                type="button"
+                className="permissions-reset-button"
+                onClick={() => setSelectedPermission(null)}
+              >
+                Close
+              </button>
+
+              {selectedPermission.status !== "Revoked" &&
+                selectedPermission.status !== "Expired" && (
+                  <button
+                    type="button"
+                    className="permissions-primary-button permissions-modal-done"
+                    onClick={() => revokePermission(selectedPermission)}
+                  >
+                    Revoke access
+                  </button>
+                )}
+            </div>
           </section>
         </div>
       )}

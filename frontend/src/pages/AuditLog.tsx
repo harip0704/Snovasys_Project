@@ -1,21 +1,25 @@
-import { useMemo, useState } from "react";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import "./AuditLog.css";
 
 type Theme = "light" | "dark";
-type Result = "Success" | "Denied" | "Failed";
+
 type Action =
   | "Login"
+  | "Logout"
   | "Upload"
   | "View"
   | "Download"
+  | "Edit"
+  | "Delete"
   | "Grant Permission"
   | "Revoke Permission"
-  | "Update"
-  | "Delete"
   | "Access Denied";
 
-type AuditEvent = {
+type Result = "Success" | "Denied" | "Failed";
+
+interface AuditEvent {
   id: number;
   timestamp: string;
   user: string;
@@ -25,573 +29,701 @@ type AuditEvent = {
   result: Result;
   ipAddress: string;
   details: string;
-};
+  denialReason?: string;
+  metadata?: Record<string, string | number | boolean | null>;
+}
 
-const initialEvents: AuditEvent[] = [
+const DEMO_EVENTS: AuditEvent[] = [
   {
     id: 1008,
-    timestamp: "2026-10-23T10:42:00",
+    timestamp: "2026-10-23T14:42:00",
     user: "Ravi Kumar",
     email: "ravi@example.com",
     action: "Download",
-    document: "Client Contract.pdf",
+    document: "Employment_Contract.pdf",
     result: "Success",
-    ipAddress: "192.0.2.18",
-    details: "The user downloaded a document they were authorized to access.",
+    ipAddress: "192.0.2.10",
+    details: "Document downloaded successfully.",
+    metadata: { fileType: "PDF", source: "Demo data" },
   },
   {
     id: 1007,
-    timestamp: "2026-10-23T10:35:00",
-    user: "Sita Reddy",
+    timestamp: "2026-10-23T14:30:00",
+    user: "Sita Devi",
     email: "sita@example.com",
     action: "Access Denied",
-    document: "Financial Report.pdf",
+    document: "Salary_Letter.pdf",
     result: "Denied",
-    ipAddress: "192.0.2.44",
-    details: "Access was denied because the user did not have permission.",
+    ipAddress: "192.0.2.11",
+    details: "Access was denied in this demo event.",
+    denialReason: "No document permission in the demo record.",
+    metadata: { permissionCheck: "Demo only" },
   },
   {
     id: 1006,
-    timestamp: "2026-10-23T10:18:00",
+    timestamp: "2026-10-23T13:55:00",
     user: "Hari",
     email: "hari@example.com",
     action: "Grant Permission",
-    document: "Security Policy.pdf",
+    document: "Project_Design.docx",
     result: "Success",
-    ipAddress: "192.0.2.10",
-    details: "Viewer access was granted to an authorized user.",
+    ipAddress: "192.0.2.12",
+    details: "A document permission grant is represented in this demo record.",
+    metadata: { permission: "Viewer", source: "Demo data" },
   },
   {
     id: 1005,
-    timestamp: "2026-10-23T09:57:00",
+    timestamp: "2026-10-23T13:20:00",
     user: "Priya Sharma",
     email: "priya@example.com",
     action: "View",
-    document: "Security Policy.pdf",
+    document: "Audit_Report.pdf",
     result: "Success",
-    ipAddress: "192.0.2.27",
-    details: "The user opened the document using an active permission.",
+    ipAddress: "192.0.2.13",
+    details: "Document view event.",
   },
   {
     id: 1004,
-    timestamp: "2026-10-23T09:40:00",
-    user: "Hari",
-    email: "hari@example.com",
+    timestamp: "2026-10-23T12:40:00",
+    user: "Arjun Rao",
+    email: "arjun@example.com",
     action: "Upload",
-    document: "Project Proposal.docx",
+    document: "Project_Proposal.pdf",
     result: "Success",
-    ipAddress: "192.0.2.10",
-    details: "A document was uploaded to the workspace.",
+    ipAddress: "192.0.2.14",
+    details: "Document upload event.",
+    metadata: { fileType: "PDF", source: "Demo data" },
   },
   {
     id: 1003,
-    timestamp: "2026-10-22T16:21:00",
-    user: "Arjun Rao",
-    email: "arjun@example.com",
+    timestamp: "2026-10-23T11:15:00",
+    user: "Hari",
+    email: "hari@example.com",
     action: "Login",
     document: "—",
     result: "Success",
-    ipAddress: "192.0.2.31",
-    details: "The user signed in successfully.",
+    ipAddress: "192.0.2.15",
+    details: "Login event.",
   },
   {
     id: 1002,
-    timestamp: "2026-10-22T15:12:00",
-    user: "Hari",
-    email: "hari@example.com",
+    timestamp: "2026-10-22T16:35:00",
+    user: "Ravi Kumar",
+    email: "ravi@example.com",
     action: "Revoke Permission",
-    document: "Client Contract.pdf",
+    document: "Employment_Contract.pdf",
     result: "Success",
     ipAddress: "192.0.2.10",
-    details: "Access was revoked for a previously authorized user.",
+    details: "A permission revocation is represented in this demo record.",
+    metadata: { source: "Demo data" },
   },
   {
     id: 1001,
-    timestamp: "2026-10-22T14:03:00",
+    timestamp: "2026-10-22T15:05:00",
     user: "Unknown User",
     email: "unknown@example.com",
     action: "Access Denied",
-    document: "Confidential Drawings.pdf",
+    document: "Confidential_Report.pdf",
     result: "Denied",
-    ipAddress: "192.0.2.89",
-    details: "An unauthorized access attempt was rejected in this demo.",
+    ipAddress: "192.0.2.16",
+    details: "Access-denied demo event.",
+    denialReason: "Permission was not granted in the demo record.",
+  },
+  {
+    id: 1000,
+    timestamp: "2026-10-22T14:00:00",
+    user: "Sita Devi",
+    email: "sita@example.com",
+    action: "Edit",
+    document: "Audit_Report.pdf",
+    result: "Success",
+    ipAddress: "192.0.2.11",
+    details: "Document edit event.",
+  },
+  {
+    id: 999,
+    timestamp: "2026-10-22T13:30:00",
+    user: "Hari",
+    email: "hari@example.com",
+    action: "Logout",
+    document: "—",
+    result: "Success",
+    ipAddress: "192.0.2.15",
+    details: "Logout event.",
   },
 ];
 
-const actionOptions: Action[] = [
+const ACTION_OPTIONS: Action[] = [
   "Login",
+  "Logout",
   "Upload",
   "View",
   "Download",
+  "Edit",
+  "Delete",
   "Grant Permission",
   "Revoke Permission",
-  "Update",
-  "Delete",
   "Access Denied",
 ];
 
-function getInitialTheme(): Theme {
-  try {
-    return localStorage.getItem("trustvault-theme") === "dark"
-      ? "dark"
-      : "light";
-  } catch {
-    return "light";
+const RESULT_OPTIONS: Result[] = ["Success", "Denied", "Failed"];
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
+
+function formatTimestamp(timestamp: string): string {
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? "Invalid date" : date.toLocaleString();
+}
+
+function formatDateInput(timestamp: string): string {
+  const date = new Date(timestamp);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function csvCell(value: unknown): string {
+  let text = value == null ? "" : String(value);
+
+  if (/^[\s]*[=+\-@]/.test(text)) {
+    text = `'${text}`;
   }
+
+  return `"${text.replace(/"/g, '""')}"`;
 }
 
-function formatTimestamp(value: string) {
-  return new Date(value).toLocaleString([], {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
+function downloadCsv(rows: AuditEvent[]): void {
+  const headers = [
+    "Event ID",
+    "Timestamp",
+    "User",
+    "Email",
+    "Action",
+    "Resource",
+    "Result",
+    "IP Address",
+    "Details",
+    "Denial Reason",
+    "Metadata",
+  ];
+
+  const csvRows = rows.map((event) => [
+    event.id,
+    event.timestamp,
+    event.user,
+    event.email,
+    event.action,
+    event.document,
+    event.result,
+    event.ipAddress,
+    event.details,
+    event.denialReason ?? "",
+    JSON.stringify(event.metadata ?? {}),
+  ]);
+
+  const csv = [
+    headers.map(csvCell).join(","),
+    ...csvRows.map((row) => row.map(csvCell).join(",")),
+  ].join("\r\n");
+
+  const blob = new Blob(["\uFEFF", csv], {
+    type: "text/csv;charset=utf-8;",
   });
+
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = `trustvault-audit-logs-${new Date()
+    .toISOString()
+    .slice(0, 10)}.csv`;
+
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
-function escapeCsv(value: string) {
-  return `"${value.replace(/"/g, '""')}"`;
+function getActionLabel(action: Action): string {
+  return action === "Access Denied" ? "Access Denied" : action;
 }
 
-export default function AuditLog() {
-  const [theme, setTheme] = useState<Theme>(getInitialTheme);
-  const [events] = useState<AuditEvent[]>(initialEvents);
+function AuditLog() {
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      return localStorage.getItem("trustvault-theme") === "dark"
+        ? "dark"
+        : "light";
+    } catch {
+      return "light";
+    }
+  });
+
+  const [events, setEvents] = useState<AuditEvent[]>(DEMO_EVENTS);
   const [search, setSearch] = useState("");
-  const [actionFilter, setActionFilter] = useState("All actions");
-  const [resultFilter, setResultFilter] = useState("All results");
+  const [actionFilter, setActionFilter] = useState("");
+  const [resultFilter, setResultFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [selectedEvent, setSelectedEvent] = useState<AuditEvent | null>(null);
-  const [notice, setNotice] = useState("");
-  const [lastRefreshed, setLastRefreshed] = useState(new Date());
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState("");
+  const [refreshError, setRefreshError] = useState("");
+  const [dateError, setDateError] = useState("");
 
-  const toggleTheme = () => {
-    const next = theme === "light" ? "dark" : "light";
-    setTheme(next);
-
+  useEffect(() => {
     try {
-      localStorage.setItem("trustvault-theme", next);
+      localStorage.setItem("trustvault-theme", theme);
     } catch {
-      // Theme still works for the current session.
+      // Theme remains usable for this session if storage is unavailable.
     }
-  };
+  }, [theme]);
+
+  useEffect(() => {
+    if (!selectedEvent) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedEvent(null);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedEvent]);
 
   const filteredEvents = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const normalizedSearch = search.trim().toLowerCase();
 
-    return events.filter((event) => {
-      const matchesSearch =
-        !query ||
-        [
-          event.user,
-          event.email,
-          event.action,
-          event.document,
-          event.ipAddress,
-          String(event.id),
-        ].some((value) => value.toLowerCase().includes(query));
+    return events
+      .filter((event) => {
+        const matchesSearch =
+          !normalizedSearch ||
+          [
+            event.id,
+            event.user,
+            event.email,
+            event.action,
+            event.document,
+            event.ipAddress,
+            event.details,
+            event.denialReason ?? "",
+          ].some((value) =>
+            String(value).toLowerCase().includes(normalizedSearch),
+          );
 
-      const matchesAction =
-        actionFilter === "All actions" || event.action === actionFilter;
+        const matchesAction = !actionFilter || event.action === actionFilter;
+        const matchesResult = !resultFilter || event.result === resultFilter;
+        const eventDate = formatDateInput(event.timestamp);
+        const matchesFromDate = !fromDate || eventDate >= fromDate;
+        const matchesToDate = !toDate || eventDate <= toDate;
 
-      const matchesResult =
-        resultFilter === "All results" || event.result === resultFilter;
-
-      const eventDate = event.timestamp.slice(0, 10);
-      const matchesFrom = !fromDate || eventDate >= fromDate;
-      const matchesTo = !toDate || eventDate <= toDate;
-
-      return (
-        matchesSearch &&
-        matchesAction &&
-        matchesResult &&
-        matchesFrom &&
-        matchesTo
+        return (
+          matchesSearch &&
+          matchesAction &&
+          matchesResult &&
+          matchesFromDate &&
+          matchesToDate
+        );
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
       );
-    });
   }, [events, search, actionFilter, resultFilter, fromDate, toDate]);
 
-  const successfulCount = events.filter(
-    (event) => event.result === "Success",
-  ).length;
+  const summary = useMemo(
+    () => ({
+      total: filteredEvents.length,
+      successful: filteredEvents.filter((event) => event.result === "Success")
+        .length,
+      denied: filteredEvents.filter((event) => event.result === "Denied")
+        .length,
+      downloads: filteredEvents.filter((event) => event.action === "Download")
+        .length,
+    }),
+    [filteredEvents],
+  );
 
-  const deniedCount = events.filter(
-    (event) => event.result === "Denied",
-  ).length;
+  const totalPages = Math.max(1, Math.ceil(filteredEvents.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
 
-  const downloadCount = events.filter(
-    (event) => event.action === "Download",
-  ).length;
+  const paginatedEvents = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return filteredEvents.slice(start, start + pageSize);
+  }, [filteredEvents, safePage, pageSize]);
+
+  const pageStart = filteredEvents.length ? (safePage - 1) * pageSize + 1 : 0;
+  const pageEnd = Math.min(safePage * pageSize, filteredEvents.length);
+
+  const updateSearch = (value: string) => {
+    setSearch(value);
+    setCurrentPage(1);
+  };
+
+  const updateActionFilter = (value: string) => {
+    setActionFilter(value);
+    setCurrentPage(1);
+  };
+
+  const updateResultFilter = (value: string) => {
+    setResultFilter(value);
+    setCurrentPage(1);
+  };
+
+  const updateFromDate = (value: string) => {
+    setFromDate(value);
+    setCurrentPage(1);
+    setDateError(
+      value && toDate && value > toDate
+        ? "From date cannot be later than To date."
+        : "",
+    );
+  };
+
+  const updateToDate = (value: string) => {
+    setToDate(value);
+    setCurrentPage(1);
+    setDateError(
+      fromDate && value && fromDate > value
+        ? "To date cannot be earlier than From date."
+        : "",
+    );
+  };
 
   const clearFilters = () => {
     setSearch("");
-    setActionFilter("All actions");
-    setResultFilter("All results");
+    setActionFilter("");
+    setResultFilter("");
     setFromDate("");
     setToDate("");
-    setNotice("");
+    setDateError("");
+    setCurrentPage(1);
+    setRefreshMessage("");
+    setRefreshError("");
   };
 
-  const refreshEvents = () => {
-    setLastRefreshed(new Date());
-    setNotice(
-      "Demo activity list refreshed. Live server events are not connected yet.",
-    );
-  };
+  const refreshEvents = useCallback(async () => {
+    setIsRefreshing(true);
+    setRefreshMessage("");
+    setRefreshError("");
 
-  const exportCsv = () => {
-    if (filteredEvents.length === 0) {
-      setNotice("No matching events to export. Change or clear your filters.");
-      return;
+    try {
+      // Demo mode: replace with an authenticated backend call later.
+      await Promise.resolve();
+      setEvents([...DEMO_EVENTS]);
+      setCurrentPage(1);
+      setRefreshMessage(
+        "Demo events reloaded. These are not production audit logs.",
+      );
+    } catch {
+      setRefreshError("Unable to reload audit events. Please try again.");
+    } finally {
+      setIsRefreshing(false);
     }
+  }, []);
 
-    const headers = [
-      "Event ID",
-      "Timestamp",
-      "User",
-      "Email",
-      "Action",
-      "Document",
-      "Result",
-      "IP Address",
-      "Details",
-    ];
+  const handleExport = () => downloadCsv(filteredEvents);
 
-    const rows = filteredEvents.map((event) =>
-      [
-        String(event.id),
-        event.timestamp,
-        event.user,
-        event.email,
-        event.action,
-        event.document,
-        event.result,
-        event.ipAddress,
-        event.details,
-      ]
-        .map(escapeCsv)
-        .join(","),
-    );
+  const handlePageSizeChange = (value: string) => {
+    const nextSize = Number(value);
 
-    const csv = [
-      headers.map(escapeCsv).join(","),
-      ...rows,
-    ].join("\r\n");
-
-    const blob = new Blob(["\uFEFF", csv], {
-      type: "text/csv;charset=utf-8;",
-    });
-
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `trustvault-audit-log-${new Date()
-      .toISOString()
-      .slice(0, 10)}.csv`;
-
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-
-    setNotice(`${filteredEvents.length} demo event(s) exported to CSV.`);
+    if (PAGE_SIZE_OPTIONS.includes(nextSize)) {
+      setPageSize(nextSize);
+      setCurrentPage(1);
+    }
   };
 
   return (
-    <main className={`audit-page theme-${theme}`}>
+    <div className={`audit-page ${theme === "dark" ? "theme-dark" : ""}`}>
       <header className="audit-topbar">
-        <Link
-          to="/dashboard"
-          className="audit-brand"
-          aria-label="TrustVault dashboard"
-        >
-          <span className="audit-brand-mark">T</span>
-          <span>TrustVault</span>
-        </Link>
-
-        <div className="audit-topbar-right">
-          <span className="audit-page-label">Security Activity</span>
-
-          <button
-            className="audit-theme-toggle"
-            type="button"
-            onClick={toggleTheme}
-          >
-            <span aria-hidden="true">
-              {theme === "light" ? "☾" : "☀"}
+        <div className="audit-brand-group">
+          <Link to="/dashboard" className="audit-brand">
+            <span className="audit-brand-icon" aria-hidden="true">
+              ◈
             </span>
-            {theme === "light" ? "Dark mode" : "Light mode"}
+            <span>TrustVault</span>
+          </Link>
+
+          <span className="audit-header-divider" aria-hidden="true" />
+
+          <Link to="/dashboard" className="audit-dashboard-link">
+            <span aria-hidden="true">⌂</span>
+            <span>Dashboard</span>
+          </Link>
+        </div>
+
+        <div className="audit-topbar-actions">
+          <button
+            type="button"
+            className="audit-theme-toggle"
+            onClick={() =>
+              setTheme((previous) => (previous === "dark" ? "light" : "dark"))
+            }
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+          >
+            {theme === "dark" ? "☀ Light Mode" : "☾ Dark Mode"}
           </button>
 
-          <Link
-            className="audit-profile-link"
-            to="/profile"
-            title="My Profile"
-            aria-label="My Profile"
-          >
-            H
+          <Link to="/profile" className="audit-profile-link">
+            <span className="audit-avatar" aria-hidden="true">
+              H
+            </span>
+            <span>Hari</span>
           </Link>
         </div>
       </header>
 
-      <div className="audit-content">
-        <div className="audit-breadcrumb-row">
-          <Link className="audit-dashboard-link" to="/dashboard">
-            <span aria-hidden="true">⌂</span> Dashboard
-          </Link>
-          <span className="audit-breadcrumb-divider">/</span>
-          <span>Audit Log</span>
-        </div>
-
-        <section className="audit-heading-row">
+      <main className="audit-content">
+        <div className="audit-page-heading">
           <div>
             <p className="audit-eyebrow">SECURITY &amp; COMPLIANCE</p>
             <h1>Audit Log</h1>
             <p className="audit-subtitle">
-              Track document activity, permission changes, and denied access
-              attempts.
+              Review document activity and access events.
             </p>
           </div>
 
           <div className="audit-heading-actions">
             <button
-              className="audit-button audit-button-secondary"
               type="button"
+              className="audit-secondary-button"
               onClick={refreshEvents}
+              disabled={isRefreshing}
             >
-              <span aria-hidden="true">↻</span> Refresh
+              {isRefreshing ? "Refreshing..." : "↻ Refresh"}
             </button>
-            <button
-              className="audit-button audit-button-primary"
-              type="button"
-              onClick={exportCsv}
-            >
-              <span aria-hidden="true">⇩</span> Export CSV
-            </button>
-          </div>
-        </section>
 
-        <div className="audit-demo-notice">
-          <span className="audit-notice-icon" aria-hidden="true">
-            ⓘ
-          </span>
-          <div>
-            <strong>Demo data</strong>
-            <p>
-              These sample events demonstrate the interface. Production audit
-              events must be generated and protected by the Spring Boot backend.
-            </p>
+            <button
+              type="button"
+              className="audit-primary-button"
+              onClick={handleExport}
+              disabled={filteredEvents.length === 0}
+            >
+              ↓ Export CSV
+            </button>
           </div>
         </div>
 
-        {notice && (
-          <div className="audit-feedback" role="status">
-            <span>{notice}</span>
-            <button
-              type="button"
-              onClick={() => setNotice("")}
-              aria-label="Dismiss message"
-            >
-              ×
-            </button>
-          </div>
+        <div className="audit-demo-notice" role="note">
+          <strong>Demo mode:</strong> The events displayed here are sample
+          records, not verified production security logs. Production audit
+          events must be generated and protected by the backend.
+        </div>
+
+        {refreshMessage && (
+          <p className="audit-feedback" role="status">
+            {refreshMessage}
+          </p>
         )}
 
-        <section className="audit-stats-grid" aria-label="Audit summary">
+        {refreshError && (
+          <p className="audit-error" role="alert">
+            {refreshError}
+          </p>
+        )}
+
+        <section
+          className="audit-stats-grid"
+          aria-label="Summary of filtered audit events"
+        >
           <article className="audit-stat-card">
-            <div className="audit-stat-top">
-              <span>Total events</span>
-              <span className="audit-stat-icon blue">≡</span>
-            </div>
-            <strong>{events.length}</strong>
-            <small>Recorded in this demo</small>
+            <span className="audit-stat-label">Total Events</span>
+            <strong className="audit-stat-value">{summary.total}</strong>
+            <span className="audit-stat-description">Matching filters</span>
           </article>
 
           <article className="audit-stat-card">
-            <div className="audit-stat-top">
-              <span>Successful actions</span>
-              <span className="audit-stat-icon green">✓</span>
-            </div>
-            <strong>{successfulCount}</strong>
-            <small>Completed successfully</small>
+            <span className="audit-stat-label">Successful Actions</span>
+            <strong className="audit-stat-value">{summary.successful}</strong>
+            <span className="audit-stat-description">Result: Success</span>
           </article>
 
           <article className="audit-stat-card">
-            <div className="audit-stat-top">
-              <span>Denied attempts</span>
-              <span className="audit-stat-icon red">!</span>
-            </div>
-            <strong>{deniedCount}</strong>
-            <small>Blocked in sample data</small>
+            <span className="audit-stat-label">Denied Attempts</span>
+            <strong className="audit-stat-value">{summary.denied}</strong>
+            <span className="audit-stat-description">Result: Denied</span>
           </article>
 
           <article className="audit-stat-card">
-            <div className="audit-stat-top">
-              <span>Downloads</span>
-              <span className="audit-stat-icon purple">↓</span>
-            </div>
-            <strong>{downloadCount}</strong>
-            <small>Document download events</small>
+            <span className="audit-stat-label">Downloads</span>
+            <strong className="audit-stat-value">{summary.downloads}</strong>
+            <span className="audit-stat-description">Matching downloads</span>
           </article>
         </section>
 
-        <section className="audit-log-panel">
-          <div className="audit-panel-heading">
-            <div>
-              <h2>Activity history</h2>
-              <p>Search and filter recorded events.</p>
-            </div>
-            <span className="audit-result-count">
-              {filteredEvents.length} events
-            </span>
+        <section className="audit-filters" aria-label="Audit filters">
+          <div className="audit-filter-field audit-search-field">
+            <label htmlFor="audit-search">Search activity</label>
+            <input
+              id="audit-search"
+              type="search"
+              placeholder="Search user, document, IP, event ID..."
+              value={search}
+              onChange={(event) => updateSearch(event.target.value)}
+            />
           </div>
 
-          <div className="audit-filters">
-            <label className="audit-search-field">
-              <span aria-hidden="true">⌕</span>
-              <input
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search user, document, IP or event ID..."
-                aria-label="Search audit events"
-              />
-            </label>
+          <div className="audit-filter-field">
+            <label htmlFor="audit-action-filter">Action</label>
+            <select
+              id="audit-action-filter"
+              value={actionFilter}
+              onChange={(event) => updateActionFilter(event.target.value)}
+            >
+              <option value="">All actions</option>
+              {ACTION_OPTIONS.map((action) => (
+                <option key={action} value={action}>
+                  {getActionLabel(action)}
+                </option>
+              ))}
+            </select>
+          </div>
 
-            <label className="audit-filter-field">
-              <span>Action</span>
+          <div className="audit-filter-field">
+            <label htmlFor="audit-result-filter">Result</label>
+            <select
+              id="audit-result-filter"
+              value={resultFilter}
+              onChange={(event) => updateResultFilter(event.target.value)}
+            >
+              <option value="">All results</option>
+              {RESULT_OPTIONS.map((result) => (
+                <option key={result} value={result}>
+                  {result}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="audit-filter-field">
+            <label htmlFor="audit-from-date">From date</label>
+            <input
+              id="audit-from-date"
+              type="date"
+              value={fromDate}
+              max={toDate || undefined}
+              onChange={(event) => updateFromDate(event.target.value)}
+            />
+          </div>
+
+          <div className="audit-filter-field">
+            <label htmlFor="audit-to-date">To date</label>
+            <input
+              id="audit-to-date"
+              type="date"
+              value={toDate}
+              min={fromDate || undefined}
+              onChange={(event) => updateToDate(event.target.value)}
+            />
+          </div>
+
+          <button
+            type="button"
+            className="audit-clear-button"
+            onClick={clearFilters}
+          >
+            Clear Filters
+          </button>
+
+          {dateError && (
+            <p className="audit-error audit-date-error" role="alert">
+              {dateError}
+            </p>
+          )}
+        </section>
+
+        <section className="audit-history-section">
+          <div className="audit-history-heading">
+            <div>
+              <h2>Activity History</h2>
+              <p>
+                Showing {pageStart}–{pageEnd} of {filteredEvents.length} matching
+                events
+              </p>
+            </div>
+
+            <label className="audit-page-size-control">
+              <span>Rows per page</span>
               <select
-                value={actionFilter}
-                onChange={(event) => setActionFilter(event.target.value)}
+                aria-label="Rows per page"
+                value={pageSize}
+                onChange={(event) => handlePageSizeChange(event.target.value)}
               >
-                <option>All actions</option>
-                {actionOptions.map((action) => (
-                  <option key={action}>{action}</option>
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
                 ))}
               </select>
             </label>
-
-            <label className="audit-filter-field">
-              <span>Result</span>
-              <select
-                value={resultFilter}
-                onChange={(event) => setResultFilter(event.target.value)}
-              >
-                <option>All results</option>
-                <option>Success</option>
-                <option>Denied</option>
-                <option>Failed</option>
-              </select>
-            </label>
-
-            <label className="audit-filter-field">
-              <span>From date</span>
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(event) => {
-                  setFromDate(event.target.value);
-                  if (toDate && event.target.value > toDate) {
-                    setToDate("");
-                  }
-                }}
-              />
-            </label>
-
-            <label className="audit-filter-field">
-              <span>To date</span>
-              <input
-                type="date"
-                min={fromDate || undefined}
-                value={toDate}
-                onChange={(event) => setToDate(event.target.value)}
-              />
-            </label>
-
-            <button
-              className="audit-clear-button"
-              type="button"
-              onClick={clearFilters}
-            >
-              Clear filters
-            </button>
           </div>
 
-          <div className="audit-table-wrap">
+          <div className="audit-table-wrapper">
             <table className="audit-table">
               <thead>
                 <tr>
-                  <th>Event</th>
-                  <th>User</th>
-                  <th>Action</th>
-                  <th>Document / Resource</th>
-                  <th>Result</th>
-                  <th>IP address</th>
-                  <th>
-                    <span className="sr-only">Details</span>
-                  </th>
+                  <th scope="col">Event ID</th>
+                  <th scope="col">Timestamp</th>
+                  <th scope="col">User</th>
+                  <th scope="col">Action</th>
+                  <th scope="col">Resource</th>
+                  <th scope="col">Result</th>
+                  <th scope="col">Details</th>
                 </tr>
               </thead>
 
               <tbody>
-                {filteredEvents.map((event) => (
+                {paginatedEvents.map((event) => (
                   <tr key={event.id}>
+                    <td>#{event.id}</td>
+                    <td>{formatTimestamp(event.timestamp)}</td>
                     <td>
-                      <strong className="audit-event-id">#{event.id}</strong>
-                      <span className="audit-cell-subtext">
-                        {formatTimestamp(event.timestamp)}
-                      </span>
+                      <div className="audit-user-cell">
+                        <strong>{event.user}</strong>
+                        <span>{event.email || "—"}</span>
+                      </div>
                     </td>
-                    <td>
-                      <strong>{event.user}</strong>
-                      <span className="audit-cell-subtext">
-                        {event.email}
-                      </span>
-                    </td>
+                    <td>{getActionLabel(event.action)}</td>
+                    <td>{event.document || "—"}</td>
                     <td>
                       <span
-                        className={`audit-action-tag action-${event.action
-                          .toLowerCase()
-                          .replaceAll(" ", "-")}`}
+                        className={`audit-result-badge audit-result-${event.result.toLowerCase()}`}
                       >
-                        {event.action}
-                      </span>
-                    </td>
-                    <td className="audit-document-cell">{event.document}</td>
-                    <td>
-                      <span
-                        className={`audit-result-tag result-${event.result.toLowerCase()}`}
-                      >
-                        <span />
                         {event.result}
                       </span>
                     </td>
-                    <td className="audit-ip-cell">{event.ipAddress}</td>
                     <td>
                       <button
-                        className="audit-details-button"
                         type="button"
+                        className="audit-view-button"
                         onClick={() => setSelectedEvent(event)}
+                        aria-label={`View details for event ${event.id}`}
                       >
-                        Details
+                        View details
                       </button>
                     </td>
                   </tr>
                 ))}
 
-                {filteredEvents.length === 0 && (
+                {paginatedEvents.length === 0 && (
                   <tr>
                     <td colSpan={7} className="audit-empty-state">
-                      <span aria-hidden="true">⌕</span>
-                      <strong>No matching events</strong>
-                      <p>Try changing your search or clearing the filters.</p>
+                      <strong>No audit events found</strong>
+                      <p>
+                        Try changing your search or filters, or clear all
+                        filters to view the available demo events.
+                      </p>
                       <button
-                        className="audit-button audit-button-secondary"
                         type="button"
+                        className="audit-clear-button"
                         onClick={clearFilters}
                       >
-                        Clear filters
+                        Clear Filters
                       </button>
                     </td>
                   </tr>
@@ -600,26 +732,59 @@ export default function AuditLog() {
             </table>
           </div>
 
-          <div className="audit-panel-footer">
+          <nav className="audit-pagination" aria-label="Audit log pagination">
             <span>
-              Showing {filteredEvents.length} of {events.length} demo events
+              Page {safePage} of {totalPages}
             </span>
-            <span>
-              Last refreshed:{" "}
-              {lastRefreshed.toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </span>
-          </div>
-        </section>
 
-        <p className="audit-security-note">
-          <strong>Security reminder:</strong> the frontend must not enforce
-          document permissions by itself. The backend must authorize each
-          request and create protected audit records server-side.
-        </p>
-      </div>
+            <div className="audit-pagination-actions">
+              <button
+                type="button"
+                className="audit-secondary-button"
+                onClick={() => setCurrentPage(1)}
+                disabled={safePage <= 1}
+                aria-label="Go to first page"
+              >
+                First
+              </button>
+
+              <button
+                type="button"
+                className="audit-secondary-button"
+                onClick={() =>
+                  setCurrentPage((page) => Math.max(1, page - 1))
+                }
+                disabled={safePage <= 1}
+                aria-label="Go to previous page"
+              >
+                Previous
+              </button>
+
+              <button
+                type="button"
+                className="audit-secondary-button"
+                onClick={() =>
+                  setCurrentPage((page) => Math.min(totalPages, page + 1))
+                }
+                disabled={safePage >= totalPages}
+                aria-label="Go to next page"
+              >
+                Next
+              </button>
+
+              <button
+                type="button"
+                className="audit-secondary-button"
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={safePage >= totalPages}
+                aria-label="Go to last page"
+              >
+                Last
+              </button>
+            </div>
+          </nav>
+        </section>
+      </main>
 
       {selectedEvent && (
         <div
@@ -632,86 +797,119 @@ export default function AuditLog() {
           }}
         >
           <section
-            className="audit-detail-modal"
+            className="audit-modal"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="audit-detail-title"
+            aria-labelledby="audit-modal-title"
+            aria-describedby="audit-modal-description"
           >
             <div className="audit-modal-header">
               <div>
-                <p className="audit-eyebrow">
-                  EVENT #{selectedEvent.id}
-                </p>
-                <h2 id="audit-detail-title">Event details</h2>
+                <p className="audit-eyebrow">EVENT DETAILS</p>
+                <h2 id="audit-modal-title">
+                  Audit Event #{selectedEvent.id}
+                </h2>
               </div>
+
               <button
-                className="audit-modal-close"
                 type="button"
+                className="audit-modal-close"
                 onClick={() => setSelectedEvent(null)}
                 aria-label="Close event details"
+                autoFocus
               >
                 ×
               </button>
             </div>
 
-            <div className="audit-modal-result-row">
-              <span
-                className={`audit-result-tag result-${selectedEvent.result.toLowerCase()}`}
-              >
-                <span />
-                {selectedEvent.result}
-              </span>
-              <span
-                className={`audit-action-tag action-${selectedEvent.action
-                  .toLowerCase()
-                  .replaceAll(" ", "-")}`}
-              >
-                {selectedEvent.action}
-              </span>
-            </div>
+            <p
+              id="audit-modal-description"
+              className="audit-modal-description"
+            >
+              Details for this demo record. Verify production events through
+              the authenticated backend.
+            </p>
 
-            <dl className="audit-detail-list">
-              <div>
-                <dt>Date &amp; time</dt>
-                <dd>{formatTimestamp(selectedEvent.timestamp)}</dd>
+            <div className="audit-modal-grid">
+              <div className="audit-modal-item">
+                <span>Event ID</span>
+                <strong>#{selectedEvent.id}</strong>
               </div>
-              <div>
-                <dt>User</dt>
-                <dd>
-                  {selectedEvent.user}
-                  <span>{selectedEvent.email}</span>
-                </dd>
+
+              <div className="audit-modal-item">
+                <span>Timestamp</span>
+                <strong>{formatTimestamp(selectedEvent.timestamp)}</strong>
               </div>
-              <div>
-                <dt>Document / resource</dt>
-                <dd>{selectedEvent.document}</dd>
+
+              <div className="audit-modal-item">
+                <span>User</span>
+                <strong>{selectedEvent.user || "Unknown user"}</strong>
               </div>
-              <div>
-                <dt>IP address</dt>
-                <dd>{selectedEvent.ipAddress}</dd>
+
+              <div className="audit-modal-item">
+                <span>Email</span>
+                <strong>{selectedEvent.email || "Not available"}</strong>
               </div>
-              <div>
-                <dt>Event ID</dt>
-                <dd>#{selectedEvent.id}</dd>
+
+              <div className="audit-modal-item">
+                <span>Action</span>
+                <strong>{selectedEvent.action}</strong>
               </div>
-              <div>
-                <dt>Details</dt>
-                <dd>{selectedEvent.details}</dd>
+
+              <div className="audit-modal-item">
+                <span>Resource</span>
+                <strong>{selectedEvent.document || "Not applicable"}</strong>
               </div>
-            </dl>
+
+              <div className="audit-modal-item">
+                <span>Result</span>
+                <strong>{selectedEvent.result}</strong>
+              </div>
+
+              <div className="audit-modal-item">
+                <span>IP Address</span>
+                <strong>{selectedEvent.ipAddress || "Not available"}</strong>
+              </div>
+
+              <div className="audit-modal-item audit-modal-full-width">
+                <span>Event details</span>
+                <p>
+                  {selectedEvent.details || "No additional details available."}
+                </p>
+              </div>
+
+              {selectedEvent.result === "Denied" && (
+                <div className="audit-modal-item audit-modal-full-width">
+                  <span>Denial reason</span>
+                  <p>
+                    {selectedEvent.denialReason ||
+                      "No denial reason recorded in this demo event."}
+                  </p>
+                </div>
+              )}
+
+              <div className="audit-modal-item audit-modal-full-width">
+                <span>Metadata</span>
+                <pre>
+                  {JSON.stringify(selectedEvent.metadata ?? {}, null, 2)}
+                </pre>
+              </div>
+            </div>
 
             <div className="audit-modal-footer">
               <button
-                className="audit-button audit-button-primary"
                 type="button"
+                className="audit-primary-button"
                 onClick={() => setSelectedEvent(null)}
               >
-                Close details
+                Close
               </button>
             </div>
           </section>
         </div>
       )}
-    </main>
+    </div>
   );
 }
+
+export default AuditLog;

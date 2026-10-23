@@ -1,3 +1,4 @@
+
 import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import "./Dashboard.css";
@@ -286,11 +287,157 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* Neon TrustVault shield, document and lock illustration */}
           <div className="tv-hero-art" aria-hidden="true">
             <div className="tv-art-ring">
-              <span>▤</span>
-              <span>♙</span>
-              <span>♢</span>
+              <div className="tv-art-shield">
+                <svg
+                  viewBox="0 0 220 240"
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="100%"
+                  height="100%"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <defs>
+                    <linearGradient
+                      id="tvShieldStroke"
+                      x1="0%"
+                      y1="0%"
+                      x2="100%"
+                      y2="100%"
+                    >
+                      <stop offset="0%" stopColor="#d9a7ff" />
+                      <stop offset="48%" stopColor="#6b5cff" />
+                      <stop offset="100%" stopColor="#00d9ff" />
+                    </linearGradient>
+
+                    <linearGradient
+                      id="tvShieldFill"
+                      x1="0%"
+                      y1="0%"
+                      x2="100%"
+                      y2="100%"
+                    >
+                      <stop offset="0%" stopColor="#ffffff" />
+                      <stop offset="100%" stopColor="#c9dcff" />
+                    </linearGradient>
+
+                    <linearGradient
+                      id="tvDocumentStroke"
+                      x1="0%"
+                      y1="0%"
+                      x2="100%"
+                      y2="100%"
+                    >
+                      <stop offset="0%" stopColor="#853eff" />
+                      <stop offset="100%" stopColor="#087dff" />
+                    </linearGradient>
+
+                    <linearGradient
+                      id="tvLockFill"
+                      x1="0%"
+                      y1="0%"
+                      x2="100%"
+                      y2="100%"
+                    >
+                      <stop offset="0%" stopColor="#bba2ff" />
+                      <stop offset="100%" stopColor="#49d8ff" />
+                    </linearGradient>
+
+                    <filter
+                      id="tvShieldGlow"
+                      x="-50%"
+                      y="-50%"
+                      width="200%"
+                      height="200%"
+                    >
+                      <feGaussianBlur stdDeviation="5" result="blur" />
+                      <feMerge>
+                        <feMergeNode in="blur" />
+                        <feMergeNode in="SourceGraphic" />
+                      </feMerge>
+                    </filter>
+                  </defs>
+
+                  {/* Outer shield */}
+                  <path
+                    d="M110 12 L190 48 V106 C190 159 156 198 110 224 C64 198 30 159 30 106 V48 Z"
+                    fill="url(#tvShieldFill)"
+                    stroke="url(#tvShieldStroke)"
+                    strokeWidth="7"
+                    strokeLinejoin="round"
+                    filter="url(#tvShieldGlow)"
+                  />
+
+                  {/* Inner shield border */}
+                  <path
+                    d="M110 31 L173 59 V105 C173 148 146 181 110 202 C74 181 47 148 47 105 V59 Z"
+                    fill="none"
+                    stroke="#8d78ff"
+                    strokeWidth="4"
+                    strokeLinejoin="round"
+                    opacity="0.85"
+                  />
+
+                  {/* Document */}
+                  <path
+                    d="M79 67 H136 L158 89 V151 Q158 164 145 164 H79 Q66 164 66 151 V80 Q66 67 79 67 Z"
+                    fill="#ffffff"
+                    stroke="url(#tvDocumentStroke)"
+                    strokeWidth="6"
+                    strokeLinejoin="round"
+                  />
+
+                  {/* Folded document corner */}
+                  <path
+                    d="M136 68 V84 Q136 89 142 89 H157"
+                    fill="#dceaff"
+                    stroke="url(#tvDocumentStroke)"
+                    strokeWidth="5"
+                    strokeLinejoin="round"
+                  />
+
+                  {/* Document lines */}
+                  <path
+                    d="M83 101 H129 M83 116 H132 M83 131 H113"
+                    fill="none"
+                    stroke="url(#tvDocumentStroke)"
+                    strokeWidth="5"
+                    strokeLinecap="round"
+                  />
+
+                  {/* Lock shackle */}
+                  <path
+                    d="M100 154 V139 A17 17 0 0 1 134 139 V154"
+                    fill="none"
+                    stroke="#2438a8"
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                  />
+
+                  {/* Lock body */}
+                  <rect
+                    x="88"
+                    y="150"
+                    width="58"
+                    height="48"
+                    rx="11"
+                    fill="url(#tvLockFill)"
+                    stroke="#263bb7"
+                    strokeWidth="6"
+                  />
+
+                  {/* Lock keyhole */}
+                  <circle cx="117" cy="168" r="6" fill="#263bb7" />
+                  <path
+                    d="M117 174 V183"
+                    stroke="#263bb7"
+                    strokeWidth="6"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </div>
             </div>
           </div>
         </section>

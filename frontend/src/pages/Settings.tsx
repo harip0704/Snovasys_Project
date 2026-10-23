@@ -34,7 +34,7 @@ export default function Settings() {
         nextTheme ? "dark" : "light"
       );
     } catch {
-      // Theme still changes for the current page session.
+      // Theme changes for the current page session.
     }
   }
 
@@ -73,11 +73,7 @@ export default function Settings() {
   }
 
   return (
-    <div
-      className={`settings-page ${
-        darkMode ? "settings-dark" : "settings-light"
-      }`}
-    >
+    <div className={`settings-page ${darkMode ? "settings-dark" : "settings-light"}`}>
       <header className="settings-topbar">
         <Link to="/dashboard" className="settings-brand">
           <span className="settings-brand-mark">◆</span>
@@ -118,8 +114,7 @@ export default function Settings() {
             <p className="settings-eyebrow">WORKSPACE PREFERENCES</p>
             <h1>Settings</h1>
             <p>
-              Customize your workspace preferences and review security
-              options.
+              Customize your workspace preferences and review security options.
             </p>
           </div>
         </section>
@@ -127,10 +122,9 @@ export default function Settings() {
         <div className="settings-notice" role="note">
           <span>ⓘ</span>
           <p>
-            <strong>Frontend demo:</strong> These preferences are saved in
-            this browser. Security controls such as two-factor authentication
-            and session expiry require backend implementation before they
-            are real.
+            <strong>Frontend demo:</strong> These preferences are saved in this
+            browser. Security controls such as two-factor authentication and
+            session expiry require backend implementation before they are real.
           </p>
         </div>
 
@@ -234,16 +228,10 @@ export default function Settings() {
                     value={timezone}
                     onChange={(event) => setTimezone(event.target.value)}
                   >
-                    <option value="Asia/Kolkata">
-                      India Standard Time (IST)
-                    </option>
-                    <option value="UTC">
-                      Coordinated Universal Time (UTC)
-                    </option>
+                    <option value="Asia/Kolkata">India Standard Time (IST)</option>
+                    <option value="UTC">Coordinated Universal Time (UTC)</option>
                     <option value="America/New_York">Eastern Time</option>
-                    <option value="Europe/London">
-                      United Kingdom Time
-                    </option>
+                    <option value="Europe/London">United Kingdom Time</option>
                   </select>
                 </div>
               </>
@@ -271,9 +259,7 @@ export default function Settings() {
                     <input
                       type="checkbox"
                       checked={twoFactor}
-                      onChange={(event) =>
-                        setTwoFactor(event.target.checked)
-                      }
+                      onChange={(event) => setTwoFactor(event.target.checked)}
                     />
                     <span />
                   </label>
@@ -286,9 +272,7 @@ export default function Settings() {
                   <select
                     id="settings-timeout"
                     value={sessionTimeout}
-                    onChange={(event) =>
-                      setSessionTimeout(event.target.value)
-                    }
+                    onChange={(event) => setSessionTimeout(event.target.value)}
                   >
                     <option value="15">15 minutes</option>
                     <option value="30">30 minutes</option>
@@ -325,7 +309,6 @@ export default function Settings() {
                     <strong>Email notifications</strong>
                     <p>Preference for general email updates.</p>
                   </div>
-
                   <label className="settings-switch">
                     <input
                       type="checkbox"
@@ -341,11 +324,8 @@ export default function Settings() {
                 <div className="settings-option">
                   <div>
                     <strong>Security alerts</strong>
-                    <p>
-                      Preference for denied access and security warnings.
-                    </p>
+                    <p>Preference for denied access and security warnings.</p>
                   </div>
-
                   <label className="settings-switch">
                     <input
                       type="checkbox"
@@ -361,11 +341,8 @@ export default function Settings() {
                 <div className="settings-option">
                   <div>
                     <strong>Document activity updates</strong>
-                    <p>
-                      Preference for document changes and sharing updates.
-                    </p>
+                    <p>Preference for document changes and sharing updates.</p>
                   </div>
-
                   <label className="settings-switch">
                     <input
                       type="checkbox"
@@ -379,8 +356,8 @@ export default function Settings() {
                 </div>
 
                 <p className="settings-muted-note">
-                  These switches store preferences only; email delivery is
-                  not connected.
+                  These switches store preferences only; email delivery is not
+                  connected.
                 </p>
               </>
             )}
@@ -390,9 +367,7 @@ export default function Settings() {
                 <div className="settings-section-heading">
                   <div>
                     <h2>Privacy and data</h2>
-                    <p>
-                      Understand how this demo handles your preferences.
-                    </p>
+                    <p>Understand how this demo handles your preferences.</p>
                   </div>
                   <span className="settings-section-icon">◈</span>
                 </div>
@@ -413,8 +388,8 @@ export default function Settings() {
                   <div>
                     <strong>Audit history</strong>
                     <p>
-                      Real document activity must be recorded and protected
-                      by the backend from unauthorized modification.
+                      Real document activity must be recorded and protected by
+                      the backend from unauthorized modification.
                     </p>
                   </div>
                 </div>
@@ -433,9 +408,9 @@ export default function Settings() {
                 <div className="settings-security-callout">
                   <strong>Data deletion</strong>
                   <p>
-                    This page does not delete account data or stored
-                    documents. A production deletion workflow needs
-                    authenticated, server-side handling.
+                    This page does not delete account data or stored documents.
+                    A production deletion workflow needs authenticated,
+                    server-side handling.
                   </p>
                 </div>
               </>
@@ -472,8 +447,8 @@ export default function Settings() {
               <span className="settings-modal-icon">!</span>
               <h2 id="settings-reset-title">Reset preferences?</h2>
               <p>
-                This restores the preference controls to their default
-                values. Your account and documents will not be deleted.
+                This restores the preference controls to their default values.
+                Your account and documents will not be deleted.
               </p>
 
               <div className="settings-modal-actions">

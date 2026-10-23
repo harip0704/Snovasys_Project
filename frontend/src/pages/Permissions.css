@@ -889,3 +889,168 @@
     transition: none !important;
   }
 }
+/* Grant Permission Modal — layout fix */
+
+.grant-permission-modal {
+  width: min(620px, calc(100vw - 32px));
+  max-width: 620px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 28px;
+  border-radius: 18px;
+  background: #ffffff;
+  color: #17213d;
+}
+
+.theme-dark .grant-permission-modal {
+  background: #191b2e;
+  color: #f0efff;
+}
+
+.grant-permission-description {
+  margin: 16px 0 24px;
+  line-height: 1.6;
+  color: #64708b;
+}
+
+.theme-dark .grant-permission-description {
+  color: #c2c5df;
+}
+
+.grant-permission-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 18px;
+  width: 100%;
+}
+
+.grant-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.grant-form-field label {
+  font-size: 13px;
+  font-weight: 650;
+  color: #293653;
+}
+
+.theme-dark .grant-form-field label {
+  color: #e6e5ff;
+}
+
+.grant-form-field input,
+.grant-form-field select {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid #d8dced;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #17213d;
+  font: inherit;
+  font-size: 14px;
+}
+
+.theme-dark .grant-form-field input,
+.theme-dark .grant-form-field select {
+  background: #111426;
+  color: #f0efff;
+  border-color: #414561;
+}
+
+.grant-form-field input:focus,
+.grant-form-field select:focus {
+  outline: 2px solid #7865ee;
+  outline-offset: 2px;
+}
+
+.grant-form-field small {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #727d96;
+}
+
+.theme-dark .grant-form-field small {
+  color: #b6bad5;
+}
+
+.grant-form-full {
+  grid-column: 1 / -1;
+}
+
+.grant-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #e7e9f2;
+}
+
+.theme-dark .grant-form-actions {
+  border-color: #383c56;
+}
+
+.grant-form-actions button {
+  min-height: 42px;
+  padding: 10px 16px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.grant-form-actions .permissions-clear-button {
+  background: transparent;
+  color: #4b5572;
+  border: 1px solid #d8dced;
+}
+
+.theme-dark .grant-form-actions .permissions-clear-button {
+  color: #e6e5ff;
+  border-color: #414561;
+}
+
+.grant-form-actions .permissions-primary-button {
+  background: #6654e8;
+  color: #ffffff;
+  border: 1px solid #6654e8;
+}
+
+.grant-form-actions .permissions-primary-button:hover {
+  background: #5542d4;
+}
+
+@media (max-width: 560px) {
+  .grant-permission-modal {
+    padding: 20px;
+  }
+
+  .grant-permission-form {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .grant-form-full,
+  .grant-form-actions {
+    grid-column: 1;
+  }
+
+  .grant-form-actions {
+    justify-content: stretch;
+  }
+
+  .grant-form-actions button {
+    flex: 1;
+  }
+}

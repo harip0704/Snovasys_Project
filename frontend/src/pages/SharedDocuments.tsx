@@ -1,191 +1,286 @@
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import "./SharedDocuments.css";
 
-type Theme = "light" | "dark";
-type DocumentStatus = "Active" | "Expiring soon" | "Revoked";
+type Permission = "View" | "Download" | "Edit";
+type AccessStatus = "Active" | "Expiring Soon" | "Revoked";
 
 type SharedDocument = {
   id: number;
-  name: string;
-  category: string;
+  documentName: string;
   owner: string;
+  recipient: string;
+  category: string;
+  permission: Permission;
   sharedDate: string;
   expiryDate: string;
-  status: DocumentStatus;
-  permission: string;
+  status: AccessStatus;
 };
 
-const demoSharedDocuments: SharedDocument[] = [
+const availableDocuments = [
+  "Employment Agreement.pdf",
+  "Salary Structure.pdf",
+  "Project Blueprint.docx",
+  "Audit Report.pdf",
+  "Project Proposal.docx",
+];
+
+const initialDocuments: SharedDocument[] = [
   {
     id: 1,
-    name: "Client Contract.pdf",
+    documentName: "Employment Agreement.pdf",
+    owner: "Hari",
+    recipient: "ravi@example.com",
     category: "Contracts",
-    owner: "Ravi Kumar",
-    sharedDate: "20 Oct 2026",
-    expiryDate: "30 Oct 2026",
-    status: "Active",
     permission: "View",
+    sharedDate: "2026-10-20",
+    expiryDate: "2026-11-20",
+    status: "Active",
   },
   {
     id: 2,
-    name: "Security Policy.pdf",
-    category: "Policies",
-    owner: "Admin",
-    sharedDate: "19 Oct 2026",
-    expiryDate: "25 Oct 2026",
-    status: "Expiring soon",
-    permission: "View and download",
+    documentName: "Salary Structure.pdf",
+    owner: "Hari",
+    recipient: "sita@example.com",
+    category: "Finance",
+    permission: "Download",
+    sharedDate: "2026-10-21",
+    expiryDate: "2026-10-28",
+    status: "Expiring Soon",
   },
   {
     id: 3,
-    name: "Project Proposal.docx",
-    category: "Other",
-    owner: "Priya Sharma",
-    sharedDate: "18 Oct 2026",
-    expiryDate: "Access revoked",
+    documentName: "Project Blueprint.docx",
+    owner: "Admin",
+    recipient: "ravi@example.com",
+    category: "Project Files",
+    permission: "Edit",
+    sharedDate: "2026-10-19",
+    expiryDate: "2026-10-25",
     status: "Revoked",
-    permission: "Revoked",
   },
 ];
 
-function getSavedTheme(): Theme {
-  try {
-    return localStorage.getItem("trustvault-theme") === "dark"
-      ? "dark"
-      : "light";
-  } catch {
-    return "light";
-  }
+function getToday(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getStatus(expiryDate: string): AccessStatus {
+  if (expiryDate < getToday()) return "Revoked";
+
+  const today = new Date(`${getToday()}T00:00:00`);
+  const expiry = new Date(`${expiryDate}T00:00:00`);
+  const daysLeft = Math.ceil(
+    (expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+  );
+
+  return daysLeft <= 7 ? "Expiring Soon" : "Active";
 }
 
 export default function SharedDocuments() {
-  const [theme, setTheme] = useState<Theme>(getSavedTheme);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All statuses");
-  const [categoryFilter, setCategoryFilter] = useState("All categories");
-  const [feedback, setFeedback] = useState("");
-  const [profileOpen, setProfileOpen] = useState(false);
+  const [documents, setDocuments] =
+    useState<SharedDocument[]>(initialDocuments);
 
-  const [documents] = useState<SharedDocument[]>(demoSharedDocuments);
+  const [documentName, setDocumentName] = useState(availableDocuments[0]);
+  const [recipient, setRecipient] = useState("");
+  const [permission, setPermission] = useState<Permission>("View");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [category, setCategory] = useState("Contracts");
 
-  const [profileView, setProfileView] = useState<
-    "none" | "profile" | "settings" | "logout"
-  >("none");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [permissionFilter, setPermissionFilter] = useState("All");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [message, setMessage] = useState("");
 
-  function toggleTheme() {
-    const nextTheme = theme === "light" ? "dark" : "light";
+  const [isDarkMode, setIsDarkMode] = useState(
+    () => localStorage.getItem("trustvault-theme") === "dark",
+  );
 
-    setTheme(nextTheme);
+  const activeDocuments = documents.filter(
+    (item) => item.status === "Active",
+  ).length;
 
-    try {
-      localStorage.setItem("trustvault-theme", nextTheme);
-    } catch {
-      // Theme still changes for this page if storage is unavailable.
-    }
-  }
+  const expiringDocuments = documents.filter(
+    (item) => item.status === "Expiring Soon",
+  ).length;
+
+  const revokedDocuments = documents.filter(
+    (item) => item.status === "Revoked",
+  ).length;
 
   const filteredDocuments = useMemo(() => {
-    const searchTerm = search.trim().toLowerCase();
+    const search = searchTerm.trim().toLowerCase();
 
-    return documents.filter((document) => {
-      const matchesSearch =
-        document.name.toLowerCase().includes(searchTerm) ||
-        document.owner.toLowerCase().includes(searchTerm) ||
-        document.category.toLowerCase().includes(searchTerm);
+    return documents.filter((item) => {
+      const matchesSearch = [
+        item.documentName,
+        item.owner,
+        item.recipient,
+        item.category,
+      ].some((value) => value.toLowerCase().includes(search));
 
       const matchesStatus =
-        statusFilter === "All statuses" ||
-        document.status === statusFilter;
+        statusFilter === "All" || item.status === statusFilter;
 
-      const matchesCategory =
-        categoryFilter === "All categories" ||
-        document.category === categoryFilter;
+      const matchesPermission =
+        permissionFilter === "All" ||
+        item.permission === permissionFilter;
 
-      return matchesSearch && matchesStatus && matchesCategory;
+      return matchesSearch && matchesStatus && matchesPermission;
     });
-  }, [documents, search, statusFilter, categoryFilter]);
+  }, [documents, searchTerm, statusFilter, permissionFilter]);
 
-  const activeCount = documents.filter(
-    (document) => document.status === "Active",
-  ).length;
-
-  const expiringCount = documents.filter(
-    (document) => document.status === "Expiring soon",
-  ).length;
-
-  const revokedCount = documents.filter(
-    (document) => document.status === "Revoked",
-  ).length;
-
-  function clearFilters() {
-    setSearch("");
-    setStatusFilter("All statuses");
-    setCategoryFilter("All categories");
+  function toggleTheme() {
+    const next = !isDarkMode;
+    setIsDarkMode(next);
+    localStorage.setItem("trustvault-theme", next ? "dark" : "light");
   }
 
-  function openProfileView(
-    view: "profile" | "settings" | "logout",
-  ) {
-    setProfileView(view);
-    setProfileOpen(false);
-
-    if (view === "profile") {
-      setFeedback("Profile: Hari | Role: Admin | TrustVault workspace");
-    } else if (view === "settings") {
-      setFeedback(
-        "Settings demo: theme preference is available on this page.",
-      );
-    } else {
-      setFeedback(
-        "Demo logout selected. Actual sign-out will require authentication integration.",
-      );
-    }
+  function resetForm() {
+    setDocumentName(availableDocuments[0]);
+    setRecipient("");
+    setPermission("View");
+    setExpiryDate("");
+    setCategory("Contracts");
+    setEditingId(null);
   }
 
-  function viewDocument(document: SharedDocument) {
-    if (document.status === "Revoked") {
-      setFeedback(
-        `Access to "${document.name}" has been revoked in this demo.`,
-      );
+  function handleShareDocument(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+
+    const email = recipient.trim().toLowerCase();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setMessage("Please enter a valid recipient email address.");
       return;
     }
 
-    setFeedback(
-      `"${document.name}" selected. Actual secure document access requires backend authorization.`,
+    if (!expiryDate) {
+      setMessage("Please select an access expiry date.");
+      return;
+    }
+
+    if (expiryDate < getToday()) {
+      setMessage("Expiry date cannot be in the past.");
+      return;
+    }
+
+    if (editingId !== null) {
+      setDocuments((previous) =>
+        previous.map((item) =>
+          item.id === editingId
+            ? {
+                ...item,
+                documentName,
+                recipient: email,
+                permission,
+                expiryDate,
+                category,
+                status: getStatus(expiryDate),
+              }
+            : item,
+        ),
+      );
+
+      setMessage("Demo sharing record updated successfully.");
+      resetForm();
+      return;
+    }
+
+    const newDocument: SharedDocument = {
+      id: Date.now(),
+      documentName,
+      owner: "Hari",
+      recipient: email,
+      category,
+      permission,
+      sharedDate: getToday(),
+      expiryDate,
+      status: getStatus(expiryDate),
+    };
+
+    setDocuments((previous) => [newDocument, ...previous]);
+    setMessage("Demo sharing record created successfully.");
+    resetForm();
+  }
+
+  function handleEdit(item: SharedDocument) {
+    if (item.status === "Revoked") {
+      setMessage("Revoked access cannot be edited. Create a new record.");
+      return;
+    }
+
+    setDocumentName(item.documentName);
+    setRecipient(item.recipient);
+    setPermission(item.permission);
+    setExpiryDate(item.expiryDate);
+    setCategory(item.category);
+    setEditingId(item.id);
+    setMessage("Update the form and save your changes.");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleRevoke(id: number) {
+    if (
+      !window.confirm(
+        "Are you sure you want to revoke this sharing record?",
+      )
+    ) {
+      return;
+    }
+
+    setDocuments((previous) =>
+      previous.map((item) =>
+        item.id === id ? { ...item, status: "Revoked" } : item,
+      ),
     );
+
+    if (editingId === id) resetForm();
+    setMessage("Demo sharing record marked as revoked.");
+  }
+
+  function clearFilters() {
+    setSearchTerm("");
+    setStatusFilter("All");
+    setPermissionFilter("All");
   }
 
   return (
-    <div className={`shared-page ${theme === "dark" ? "theme-dark" : ""}`}>
+    <div className={`shared-page ${isDarkMode ? "theme-dark" : ""}`}>
       <header className="shared-topbar">
         <Link to="/dashboard" className="shared-brand">
-          <span className="shared-brand-icon" aria-hidden="true">
-            🔐
-          </span>
-
+          <span className="shared-brand-icon">🔐</span>
           <span>
             <strong>TrustVault</strong>
-            <small>SECURE DOCUMENT WORKSPACE</small>
+            <small>SECURE DOCUMENT MANAGEMENT</small>
           </span>
         </Link>
 
         <nav className="shared-topbar-nav" aria-label="Main navigation">
-          <Link to="/dashboard" className="shared-nav-link">
+          <Link className="shared-nav-link" to="/dashboard">
             Dashboard
           </Link>
-
-          <Link to="/documents" className="shared-nav-link">
+          <Link className="shared-nav-link" to="/documents">
             My Documents
           </Link>
-
           <Link
-            to="/shared-documents"
             className="shared-nav-link shared-nav-active"
-            aria-current="page"
+            to="/shared-documents"
           >
             Shared Documents
+          </Link>
+          <Link className="shared-nav-link" to="/permissions">
+            Permissions
+          </Link>
+          <Link className="shared-nav-link" to="/audit-logs">
+            Audit Logs
           </Link>
         </nav>
 
@@ -194,62 +289,9 @@ export default function SharedDocuments() {
             type="button"
             className="shared-theme-toggle"
             onClick={toggleTheme}
-            aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
           >
-            {theme === "light" ? "🌙 Dark Mode" : "☀️ Light Mode"}
+            {isDarkMode ? "☀️ Light Mode" : "🌙 Dark Mode"}
           </button>
-
-          <div className="shared-profile-container">
-            <button
-              type="button"
-              className="shared-avatar"
-              title="Open Hari's profile menu"
-              aria-label="Open Hari's profile menu"
-              aria-expanded={profileOpen}
-              onClick={() => setProfileOpen((open) => !open)}
-            >
-              H
-            </button>
-
-            {profileOpen && (
-              <div className="shared-profile-menu">
-                <div className="shared-profile-menu-header">
-                  <span className="shared-avatar shared-menu-avatar">H</span>
-                  <div>
-                    <strong>Hari</strong>
-                    <small>Administrator</small>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => openProfileView("profile")}
-                >
-                  <span aria-hidden="true">👤</span>
-                  My Profile
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => openProfileView("settings")}
-                >
-                  <span aria-hidden="true">⚙️</span>
-                  Settings
-                </button>
-
-                <div className="shared-profile-menu-divider" />
-
-                <button
-                  type="button"
-                  className="shared-logout-option"
-                  onClick={() => openProfileView("logout")}
-                >
-                  <span aria-hidden="true">↪</span>
-                  Logout
-                </button>
-              </div>
-            )}
-          </div>
         </div>
       </header>
 
@@ -259,126 +301,178 @@ export default function SharedDocuments() {
             <p className="shared-eyebrow">DOCUMENT ACCESS MANAGEMENT</p>
             <h1>Shared Documents</h1>
             <p className="shared-subtitle">
-              Review documents shared with others, their permissions, and
-              access status.
+              Manage shared files, recipient permissions and access expiry.
             </p>
           </div>
-
-          <Link to="/documents" className="shared-primary-button">
-            + Manage Documents
-          </Link>
         </section>
 
-        <section className="shared-security-notice">
-          <span aria-hidden="true">🛡️</span>
+        <div className="shared-security-notice">
+          <span>🛡️</span>
           <p>
-            <strong>Security reminder:</strong> Only authorized users should
-            access confidential documents. Revoked entries are shown here as
-            demo records; actual access enforcement must be handled by the
-            backend.
+            <strong>Security reminder</strong>
+            <br />
+            Grant only the minimum access required. Review permissions and
+            expiry dates regularly.
           </p>
-        </section>
+        </div>
 
-        {feedback && (
-          <section className="shared-feedback" role="status">
-            <p>{feedback}</p>
+        {message && (
+          <div className="shared-feedback" role="status">
+            <p>{message}</p>
             <button
               type="button"
-              onClick={() => setFeedback("")}
               aria-label="Dismiss message"
+              onClick={() => setMessage("")}
             >
               ×
             </button>
-          </section>
+          </div>
         )}
 
-        {profileView !== "none" && (
-          <section className="shared-profile-detail" aria-live="polite">
-            <div>
-              <strong>
-                {profileView === "profile"
-                  ? "My Profile"
-                  : profileView === "settings"
-                    ? "Settings"
-                    : "Logout"}
-              </strong>
-              <p>
-                {profileView === "profile"
-                  ? "Name: Hari · Role: Administrator"
-                  : profileView === "settings"
-                    ? "Use the theme button in the header to switch between light and dark mode."
-                    : "This is a demo action. Your account has not been signed out."}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setProfileView("none")}
-              aria-label="Close profile details"
-            >
-              Close
-            </button>
-          </section>
-        )}
-
-        <section className="shared-stats" aria-label="Sharing statistics">
+        <section className="shared-stats">
           <article className="shared-stat-card">
-            <span className="shared-stat-icon" aria-hidden="true">
-              📁
-            </span>
+            <span className="shared-stat-icon">📁</span>
             <div>
-              <p>Total Shared Records</p>
+              <p>Total Records</p>
               <h2>{documents.length}</h2>
             </div>
           </article>
 
           <article className="shared-stat-card">
-            <span
-              className="shared-stat-icon shared-icon-success"
-              aria-hidden="true"
-            >
-              ✓
-            </span>
+            <span className="shared-stat-icon shared-icon-success">✓</span>
             <div>
               <p>Active Access</p>
-              <h2>{activeCount}</h2>
+              <h2>{activeDocuments}</h2>
             </div>
           </article>
 
           <article className="shared-stat-card">
-            <span
-              className="shared-stat-icon shared-icon-warning"
-              aria-hidden="true"
-            >
-              ◷
-            </span>
+            <span className="shared-stat-icon shared-icon-warning">◷</span>
             <div>
               <p>Expiring Soon</p>
-              <h2>{expiringCount}</h2>
+              <h2>{expiringDocuments}</h2>
             </div>
           </article>
 
           <article className="shared-stat-card">
-            <span
-              className="shared-stat-icon shared-icon-danger"
-              aria-hidden="true"
-            >
-              ⊘
-            </span>
+            <span className="shared-stat-icon shared-icon-danger">⊘</span>
             <div>
               <p>Revoked Access</p>
-              <h2>{revokedCount}</h2>
+              <h2>{revokedDocuments}</h2>
             </div>
           </article>
         </section>
 
-        <section className="shared-panel">
+        <section className="shared-panel shared-form-panel">
           <div className="shared-panel-heading">
             <div>
-              <h2>Document Sharing Activity</h2>
-              <p>Search and filter the shared document records.</p>
+              <h2>
+                {editingId !== null ? "Edit Sharing Record" : "Share a Document"}
+              </h2>
+              <p>Choose the document, recipient and access level.</p>
             </div>
+            {editingId !== null && (
+              <button
+                type="button"
+                className="shared-secondary-button"
+                onClick={resetForm}
+              >
+                Cancel
+              </button>
+            )}
+          </div>
 
+          <form className="shared-form" onSubmit={handleShareDocument}>
+            <label>
+              <span>Document</span>
+              <select
+                value={documentName}
+                onChange={(event) => setDocumentName(event.target.value)}
+                required
+              >
+                {availableDocuments.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span>Recipient Email</span>
+              <input
+                type="email"
+                placeholder="name@example.com"
+                value={recipient}
+                onChange={(event) => setRecipient(event.target.value)}
+                required
+              />
+            </label>
+
+            <label>
+              <span>Permission</span>
+              <select
+                value={permission}
+                onChange={(event) =>
+                  setPermission(event.target.value as Permission)
+                }
+                required
+              >
+                <option value="View">View only</option>
+                <option value="Download">View and download</option>
+                <option value="Edit">Edit document</option>
+              </select>
+            </label>
+
+            <label>
+              <span>Category</span>
+              <select
+                value={category}
+                onChange={(event) => setCategory(event.target.value)}
+                required
+              >
+                <option value="Contracts">Contracts</option>
+                <option value="Finance">Finance</option>
+                <option value="Project Files">Project Files</option>
+                <option value="Audit">Audit</option>
+                <option value="Other">Other</option>
+              </select>
+            </label>
+
+            <label>
+              <span>Access Expiry Date</span>
+              <input
+                type="date"
+                min={getToday()}
+                value={expiryDate}
+                onChange={(event) => setExpiryDate(event.target.value)}
+                required
+              />
+            </label>
+
+            <div className="shared-form-actions">
+              <button type="submit" className="shared-primary-button">
+                {editingId !== null ? "Save Changes" : "Share Document"}
+              </button>
+              {editingId !== null && (
+                <button
+                  type="button"
+                  className="shared-secondary-button"
+                  onClick={resetForm}
+                >
+                  Cancel Edit
+                </button>
+              )}
+            </div>
+          </form>
+        </section>
+
+        <section className="shared-panel shared-management-panel">
+          <div className="shared-panel-heading">
+            <div>
+              <h2>Sharing Records</h2>
+              <p>Search, filter, edit or revoke document sharing records.</p>
+            </div>
             <span className="shared-record-count">
               {filteredDocuments.length} records
             </span>
@@ -387,14 +481,12 @@ export default function SharedDocuments() {
           <div className="shared-filters">
             <label className="shared-search">
               <span aria-hidden="true">⌕</span>
-              <span className="shared-visually-hidden">
-                Search shared documents
-              </span>
+              <span className="shared-visually-hidden">Search records</span>
               <input
                 type="search"
-                placeholder="Search document, owner, category..."
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search document, owner or recipient..."
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
               />
             </label>
 
@@ -404,25 +496,25 @@ export default function SharedDocuments() {
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
               >
-                <option>All statuses</option>
-                <option>Active</option>
-                <option>Expiring soon</option>
-                <option>Revoked</option>
+                <option value="All">All statuses</option>
+                <option value="Active">Active</option>
+                <option value="Expiring Soon">Expiring Soon</option>
+                <option value="Revoked">Revoked</option>
               </select>
             </label>
 
             <label className="shared-select-label">
               <span className="shared-visually-hidden">
-                Filter by category
+                Filter by permission
               </span>
               <select
-                value={categoryFilter}
-                onChange={(event) => setCategoryFilter(event.target.value)}
+                value={permissionFilter}
+                onChange={(event) => setPermissionFilter(event.target.value)}
               >
-                <option>All categories</option>
-                <option>Contracts</option>
-                <option>Policies</option>
-                <option>Other</option>
+                <option value="All">All permissions</option>
+                <option value="View">View</option>
+                <option value="Download">Download</option>
+                <option value="Edit">Edit</option>
               </select>
             </label>
 
@@ -431,7 +523,7 @@ export default function SharedDocuments() {
               className="shared-clear-button"
               onClick={clearFilters}
             >
-              Clear filters
+              Clear Filters
             </button>
           </div>
 
@@ -439,61 +531,75 @@ export default function SharedDocuments() {
             <table className="shared-table">
               <thead>
                 <tr>
-                  <th>DOCUMENT</th>
-                  <th>OWNER</th>
-                  <th>CATEGORY</th>
-                  <th>SHARED DATE</th>
-                  <th>EXPIRY / ACCESS</th>
-                  <th>STATUS</th>
-                  <th>PERMISSION</th>
-                  <th>ACTION</th>
+                  <th>Document</th>
+                  <th>Recipient</th>
+                  <th>Permission</th>
+                  <th>Shared Date</th>
+                  <th>Expires</th>
+                  <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
 
               <tbody>
-                {filteredDocuments.length > 0 ? (
-                  filteredDocuments.map((document) => (
-                    <tr key={document.id}>
-                      <td>
-                        <div className="shared-document-name">
-                          <span className="shared-file-icon" aria-hidden="true">
-                            {document.name.endsWith(".pdf") ? "PDF" : "DOC"}
-                          </span>
-                          <strong>{document.name}</strong>
+                {filteredDocuments.map((item) => (
+                  <tr key={item.id}>
+                    <td>
+                      <div className="shared-document-name">
+                        <span className="shared-file-icon">FILE</span>
+                        <div>
+                          <strong>{item.documentName}</strong>
+                          <small>{item.category} · {item.owner}</small>
                         </div>
-                      </td>
-                      <td>{document.owner}</td>
-                      <td>{document.category}</td>
-                      <td>{document.sharedDate}</td>
-                      <td>{document.expiryDate}</td>
-                      <td>
-                        <span
-                          className={`shared-status shared-status-${document.status
-                            .toLowerCase()
-                            .replace(/\s+/g, "-")}`}
-                        >
-                          {document.status}
-                        </span>
-                      </td>
-                      <td>{document.permission}</td>
-                      <td>
+                      </div>
+                    </td>
+                    <td>{item.recipient}</td>
+                    <td>
+                      <span className={`shared-permission permission-${item.permission.toLowerCase()}`}>
+                        {item.permission}
+                      </span>
+                    </td>
+                    <td>{item.sharedDate}</td>
+                    <td>{item.expiryDate}</td>
+                    <td>
+                      <span
+                        className={`shared-status status-${item.status
+                          .toLowerCase()
+                          .replaceAll(" ", "-")}`}
+                      >
+                        {item.status}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="shared-row-actions">
                         <button
                           type="button"
                           className="shared-view-button"
-                          onClick={() => viewDocument(document)}
+                          onClick={() => handleEdit(item)}
+                          disabled={item.status === "Revoked"}
                         >
-                          View details
+                          Edit
                         </button>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
+                        <button
+                          type="button"
+                          className="shared-revoke-button"
+                          onClick={() => handleRevoke(item.id)}
+                          disabled={item.status === "Revoked"}
+                        >
+                          Revoke
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+                {filteredDocuments.length === 0 && (
                   <tr>
-                    <td className="shared-empty" colSpan={8}>
-                      <strong>No matching documents found</strong>
+                    <td colSpan={7} className="shared-empty">
+                      <strong>No sharing records found</strong>
                       <p>Try changing your search or filters.</p>
                       <button type="button" onClick={clearFilters}>
-                        Clear filters
+                        Clear Filters
                       </button>
                     </td>
                   </tr>
@@ -503,15 +609,15 @@ export default function SharedDocuments() {
           </div>
 
           <p className="shared-footnote">
-            Demo data only. Secure downloads, permission changes, audit events,
-            and actual revocation require backend authorization and storage
-            integration.
+            <strong>Demo mode:</strong> These records are stored only in
+            frontend state and reset on refresh. Real access enforcement,
+            persistent storage and audit logging require backend integration.
           </p>
         </section>
 
         <footer className="shared-footer">
-          <span>TrustVault · Secure document sharing</span>
-          <span>Access should be granted only to authorized users.</span>
+          <span>TrustVault · Secure Document Management</span>
+          <span>Review access carefully before sharing confidential files.</span>
         </footer>
       </main>
     </div>
