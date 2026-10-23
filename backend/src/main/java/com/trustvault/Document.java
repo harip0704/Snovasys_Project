@@ -1,0 +1,69 @@
+
+package com.trustvault;
+
+import com.trustvault.user.User;
+import jakarta.persistence.*;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "documents")
+public class Document {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, length = 255)
+    private String fileName;
+
+    // Private storage lo file location/key.
+    // Actual file content ni SQL Server lo store cheyyamu.
+    @Column(nullable = false, unique = true, length = 512)
+    private String storageKey;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "owner_id", nullable = false)
+    private User owner;
+
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime uploadedAt = LocalDateTime.now();
+
+    @Column(nullable = false, length = 30)
+    private String status = "ACTIVE";
+
+    protected Document() {
+    }
+
+    public Document(String fileName, String storageKey, User owner) {
+        this.fileName = fileName;
+        this.storageKey = storageKey;
+        this.owner = owner;
+        this.uploadedAt = LocalDateTime.now();
+        this.status = "ACTIVE";
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getFileName() {
+        return fileName;
+    }
+
+    public String getStorageKey() {
+        return storageKey;
+    }
+
+    public User getOwner() {
+        return owner;
+    }
+
+    public LocalDateTime getUploadedAt() {
+        return uploadedAt;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+}
