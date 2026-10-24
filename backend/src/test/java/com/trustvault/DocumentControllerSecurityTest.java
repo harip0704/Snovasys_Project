@@ -24,6 +24,9 @@ class DocumentControllerSecurityTest {
     private DocumentService documentService;
 
     @MockitoBean
+    private DocumentPermissionService documentPermissionService;
+
+    @MockitoBean
     private AuditLogService auditLogService;
 
     @MockitoBean

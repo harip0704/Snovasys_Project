@@ -4,15 +4,19 @@ package com.trustvault;
 import java.util.List;
 import java.util.Map;
 
+import jakarta.validation.Valid;
+
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -23,9 +27,13 @@ import org.springframework.web.multipart.MultipartFile;
 public class DocumentController {
 
     private final DocumentService documentService;
+    private final DocumentPermissionService documentPermissionService;
 
-    public DocumentController(DocumentService documentService) {
+    public DocumentController(
+            DocumentService documentService,
+            DocumentPermissionService documentPermissionService) {
         this.documentService = documentService;
+        this.documentPermissionService = documentPermissionService;
     }
 
     // List documents belonging to the logged-in user.
@@ -68,7 +76,7 @@ public class DocumentController {
         return ResponseEntity.ok(response);
     }
 
-    // Download a document after the service verifies ownership.
+    // Download a document after the service verifies access.
     @GetMapping("/{id}/download")
     public ResponseEntity<InputStreamResource> downloadDocument(
             Authentication authentication,
@@ -119,5 +127,37 @@ public class DocumentController {
                 "status", document.getStatus());
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    // Grant READ or EDIT permission to a registered user.
+    @PostMapping("/{id}/permissions")
+    public ResponseEntity<Map<String, String>> grantPermission(
+            Authentication authentication,
+            @PathVariable("id") Long documentId,
+            @Valid @RequestBody GrantPermissionRequest request) {
+
+        documentPermissionService.grantPermission(
+                authentication.getName(),
+                documentId,
+                request.recipientEmail(),
+                request.permissionType());
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+                Map.of("message", "Permission granted successfully"));
+    }
+
+    // Revoke a recipient's permission from an owned document.
+    @DeleteMapping("/{id}/permissions/{recipientId}")
+    public ResponseEntity<Void> revokePermission(
+            Authentication authentication,
+            @PathVariable("id") Long documentId,
+            @PathVariable("recipientId") Long recipientId) {
+
+        documentPermissionService.revokePermission(
+                authentication.getName(),
+                documentId,
+                recipientId);
+
+        return ResponseEntity.noContent().build();
     }
 }
