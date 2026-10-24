@@ -9,15 +9,16 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfig {
+
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
@@ -50,7 +51,17 @@ public class SecurityConfig {
 
         http
             .authenticationProvider(authenticationProvider)
+
             .csrf(csrf -> csrf.disable())
+
+            .exceptionHandling(exception -> exception
+                .authenticationEntryPoint((request, response, authException) ->
+                    response.sendError(
+                        HttpServletResponse.SC_UNAUTHORIZED
+                    )
+                )
+            )
+
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/health").permitAll()
                 .requestMatchers(
@@ -60,12 +71,17 @@ public class SecurityConfig {
                 ).permitAll()
                 .anyRequest().authenticated()
             )
+
             .formLogin(form -> form.disable())
+
             .httpBasic(basic -> basic.disable())
+
             .logout(logout -> logout
                 .logoutUrl("/api/auth/logout")
                 .logoutSuccessHandler((request, response, authentication) ->
-                    response.setStatus(HttpServletResponse.SC_NO_CONTENT)
+                    response.setStatus(
+                        HttpServletResponse.SC_NO_CONTENT
+                    )
                 )
             );
 

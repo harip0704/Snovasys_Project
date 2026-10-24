@@ -119,3 +119,35 @@ Configured multipart upload limits and added a global exception handler to recor
 - Updated `THREATS.md` to document implemented upload controls, verification, and remaining risks.
 
 **Fix Commit:** Pending
+
+### Entry — Secure Document Download and Authorization Testing
+
+**Date:** October 24, 2026
+
+**AI Tool:** ChatGPT
+
+**Task:** Implement secure document downloading from private AWS S3 storage, enforce owner-only access, and record download activity in the audit trail.
+
+**Prompt:**  
+Help implement a secure document download API for TrustVault using Java, Spring Boot, Spring Security, and private AWS S3 storage. Verify that only the document owner can download a file, prevent other users from accessing it, and record successful and denied download attempts in the audit log.
+
+**AI Output:**  
+Assisted with the `DocumentController` download endpoint, `DocumentService` authorization logic, S3 file retrieval, response headers, and audit logging. The download endpoint uses `GET /api/documents/{id}/download`.
+
+**Mistake Identified:**  
+The initial download request returned HTTP 404 because the download endpoint was not available in the running application. A subsequent request returned HTTP 403 before a fresh owner login was performed. After logging in again, the owner download succeeded.
+
+**Correction Made:**  
+Updated the document controller to expose the download endpoint and corrected the AWS SDK `ResponseInputStream` import to `software.amazon.awssdk.core.ResponseInputStream`. Removed the duplicate AWS S3 dependency declaration from `pom.xml`.
+
+**Verification:**
+- Backend compilation completed successfully with `BUILD SUCCESS`.
+- Owner downloaded document ID `3` (`trustvault-valid-test.txt`) successfully.
+- Downloaded file content matched the uploaded test content: `TrustVault valid upload test`.
+- Audit log recorded `DOCUMENT_DOWNLOAD`, result `SUCCESS`, for `owner.test@example.com`.
+- Viewer `hari.test@example.com` received HTTP 404 when attempting to download the owner's document.
+- Audit log recorded the viewer's attempt as `DOCUMENT_DOWNLOAD`, result `DENIED`, with details `Document not found or access not permitted`.
+
+**Verification Status:** Manual tests passed. Automated JUnit regression tests are pending.
+
+**Fix Commit:** To be added after the project changes are finalized.

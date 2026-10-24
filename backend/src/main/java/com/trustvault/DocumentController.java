@@ -4,6 +4,8 @@ package com.trustvault;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -47,7 +49,7 @@ public class DocumentController {
                 "documents", responseDocuments));
     }
 
-    // Fetch metadata for one document, only if the user owns it.
+    // Return metadata only when the logged-in user owns the document.
     @GetMapping("/{id}")
     public ResponseEntity<Map<String, Object>> getDocumentById(
             Authentication authentication,
@@ -64,6 +66,39 @@ public class DocumentController {
                 "status", document.getStatus());
 
         return ResponseEntity.ok(response);
+    }
+
+    // Download a document after the service verifies ownership.
+    @GetMapping("/{id}/download")
+    public ResponseEntity<InputStreamResource> downloadDocument(
+            Authentication authentication,
+            @PathVariable("id") Long documentId) {
+
+        DocumentService.DownloadedDocument downloadedDocument =
+                documentService.downloadMyDocument(
+                        authentication.getName(),
+                        documentId);
+
+        String safeFileName = downloadedDocument.fileName()
+                .replaceAll("[\\r\\n\"\\\\]", "_");
+
+        MediaType mediaType;
+
+        try {
+            mediaType = MediaType.parseMediaType(
+                    downloadedDocument.contentType());
+        } catch (IllegalArgumentException exception) {
+            mediaType = MediaType.APPLICATION_OCTET_STREAM;
+        }
+
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + safeFileName + "\"")
+                .header("X-Content-Type-Options", "nosniff")
+                .body(new InputStreamResource(
+                        downloadedDocument.inputStream()));
     }
 
     // Upload a document.

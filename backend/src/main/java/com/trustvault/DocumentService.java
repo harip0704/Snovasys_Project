@@ -5,6 +5,7 @@ import com.trustvault.user.User;
 import com.trustvault.user.UserRepository;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Locale;
 
@@ -13,6 +14,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 
 @Service
 public class DocumentService {
@@ -37,6 +41,12 @@ public class DocumentService {
         this.userRepository = userRepository;
         this.s3StorageService = s3StorageService;
         this.auditLogService = auditLogService;
+    }
+
+    public record DownloadedDocument(
+            String fileName,
+            String contentType,
+            ResponseInputStream<GetObjectResponse> inputStream) {
     }
 
     @Transactional(readOnly = true)
@@ -97,6 +107,83 @@ public class DocumentService {
                 "Document metadata viewed by owner");
 
         return document;
+    }
+
+    @Transactional(readOnly = true)
+    public DownloadedDocument downloadMyDocument(
+            String email,
+            Long documentId) {
+
+        String actorEmail = email.trim();
+
+        var documentOptional = documentRepository.findById(documentId);
+
+        if (documentOptional.isEmpty()) {
+
+            auditLogService.recordEvent(
+                    actorEmail,
+                    "DOCUMENT_DOWNLOAD",
+                    documentId,
+                    "DENIED",
+                    "Document not found or access not permitted");
+
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Document not found");
+        }
+
+        Document document = documentOptional.get();
+
+        if (!document.getOwner().getEmail()
+                .equalsIgnoreCase(actorEmail)) {
+
+            auditLogService.recordEvent(
+                    actorEmail,
+                    "DOCUMENT_DOWNLOAD",
+                    documentId,
+                    "DENIED",
+                    "Document not found or access not permitted");
+
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Document not found");
+        }
+
+        try {
+            ResponseInputStream<GetObjectResponse> inputStream =
+                    s3StorageService.downloadFile(document.getStorageKey());
+
+            String contentType = inputStream.response().contentType();
+
+            if (contentType == null || contentType.isBlank()) {
+                contentType = "application/octet-stream";
+            }
+
+            auditLogService.recordEvent(
+                    actorEmail,
+                    "DOCUMENT_DOWNLOAD",
+                    documentId,
+                    "SUCCESS",
+                    "Document downloaded by owner");
+
+            return new DownloadedDocument(
+                    document.getFileName(),
+                    contentType,
+                    inputStream);
+
+        } catch (RuntimeException exception) {
+
+            auditLogService.recordEvent(
+                    actorEmail,
+                    "DOCUMENT_DOWNLOAD",
+                    documentId,
+                    "FAILURE",
+                    "Download failed during file retrieval");
+
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Download failed. Please try again.");
+        }
     }
 
     @Transactional
@@ -169,7 +256,7 @@ public class DocumentService {
             contentType = "application/octet-stream";
         }
 
-        try (var inputStream = file.getInputStream()) {
+        try (InputStream inputStream = file.getInputStream()) {
 
             String storageKey = s3StorageService.uploadFile(
                     originalName,
@@ -208,7 +295,9 @@ public class DocumentService {
         }
     }
 
-    private void recordUploadDenial(String actorEmail, String details) {
+    private void recordUploadDenial(
+            String actorEmail,
+            String details) {
 
         auditLogService.recordEvent(
                 actorEmail,

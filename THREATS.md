@@ -112,3 +112,61 @@ Security decisions must be enforced by the backend. A user interface restriction
 - S3 failures and database failures require additional failure-path testing.
 - Audit logging should be protected against unauthorized modification or deletion.
 - Duplicate requests may create multiple audit entries and should be investigated when unexpected.
+
+## Secure Document Download and Cross-User Access Control
+
+### Threat 1: Unauthorized Document Download
+
+**Risk:** An authenticated user may attempt to download another user's confidential document by guessing or changing the document ID in the URL.
+
+**Example Attack:**  
+A user logged in as `hari.test@example.com` requests `GET /api/documents/3/download`, where document ID `3` belongs to `owner.test@example.com`.
+
+**Mitigation:**
+- Identify the authenticated user through the Spring Security authentication context.
+- Verify document ownership on the backend before retrieving the file from S3.
+- Do not rely on frontend visibility or client-side checks as an authorization control.
+- Return HTTP 404 for missing documents and documents the current user is not permitted to access, avoiding unnecessary disclosure of document existence.
+- Never expose private S3 object URLs or allow clients to bypass backend authorization.
+
+**Manual Verification:**  
+The owner successfully downloaded document ID `3`. A different authenticated user attempted to download the same document and received HTTP 404.
+
+**Status:** Manual authorization test passed.
+
+### Threat 2: Missing or Inaccurate Download Audit Trail
+
+**Risk:** Unauthorized access attempts or successful downloads may not be recorded, reducing accountability and making security investigations difficult.
+
+**Mitigation:**
+- Record document download events in the audit log.
+- Include the authenticated actor, action, document ID when available, result, details, and timestamp.
+- Record successful downloads as `SUCCESS`.
+- Record denied access attempts as `DENIED`.
+- Avoid logging passwords, session identifiers, file contents, or other secrets.
+
+**Manual Verification:**
+- Owner download: `DOCUMENT_DOWNLOAD`, `SUCCESS`, document ID `3`.
+- Viewer download attempt: `DOCUMENT_DOWNLOAD`, `DENIED`, document ID `3`.
+
+**Status:** Both audit outcomes verified in SQL Server.
+
+### Threat 3: Incorrect File Download Response
+
+**Risk:** Unsafe filenames or incorrect content-type handling may cause unexpected file handling by clients.
+
+**Mitigation:**
+- Sanitize CR/LF, quote, and backslash characters in the download filename.
+- Set `Content-Disposition` to attachment.
+- Set `X-Content-Type-Options: nosniff`.
+- Fall back to `application/octet-stream` when the content type is invalid.
+
+**Status:** Response headers and filename handling implemented; additional automated tests are pending.
+
+### Remaining Risks and Follow-Up Work
+
+- Convert the successful manual owner-download and denied cross-user-download scenarios into automated JUnit 5 regression tests.
+- Verify audit logging behavior with automated tests.
+- Test missing document IDs, S3 retrieval failures, expired sessions, and malformed download requests.
+- Ensure that all document access paths enforce server-side authorization.
+- Review audit-log access controls and retention requirements before deployment.
