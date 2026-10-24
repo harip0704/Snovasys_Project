@@ -91,3 +91,31 @@ These checks verified the development environment and frontend startup, not the 
 Initial commit: `5c91a8f` — `Initial commit: TrustVault project setup`.
 
 Add the actual GitHub commit URL after confirming that the commit has been pushed to the remote repository.
+
+
+## October 24, 2026
+
+### Entry 3 — Upload Validation and Audit Logging
+
+**AI Tool:** ChatGPT
+
+**Prompt:**  
+Help implement and verify secure document upload validation, file-size restrictions, and audit logging in the TrustVault Spring Boot backend.
+
+**AI Output:**  
+Guidance for validating supported file extensions, enforcing a 10 MB file-size limit, handling oversized multipart requests, and recording upload success and rejection events in SQL Server.
+
+**Mistake Identified:**  
+Oversized uploads were rejected with HTTP 413, but the rejection was not initially recorded in the audit log.
+
+**Correction Made:**  
+Configured multipart upload limits and added a global exception handler to record oversized upload attempts through `AuditLogService`.
+
+**Verification:**  
+- Valid TXT upload returned HTTP 201 and created a SUCCESS audit entry.
+- Unsupported EXE upload returned HTTP 400 and created a DENIED audit entry.
+- An 11 MB TXT upload returned HTTP 413 and created a DENIED audit entry.
+- Confirmed the corresponding records in SQL Server's `audit_logs` table.
+- Updated `THREATS.md` to document implemented upload controls, verification, and remaining risks.
+
+**Fix Commit:** Pending

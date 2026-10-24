@@ -85,3 +85,30 @@ This is the initial threat model. The mitigations listed above are planned contr
 ## 6. Guiding Principle
 
 Security decisions must be enforced by the backend. A user interface restriction alone is not sufficient to protect a document.
+
+
+## Document Upload Security
+
+### Threats
+- Users may upload unsupported or potentially unsafe file types.
+- Oversized uploads may consume excessive server resources.
+- Rejected upload attempts may go unrecorded, weakening the audit trail.
+
+### Implemented Controls
+- Only PDF, DOC, DOCX, and TXT extensions are accepted by the application validation.
+- The application enforces a 10 MB file-size limit.
+- Multipart requests exceeding the configured limit are rejected.
+- Successful uploads and tested validation rejections are recorded in the audit log.
+- Audit entries record the actor email, action, result, details, and timestamp.
+
+### Verification
+- Valid TXT upload: HTTP 201; audit result SUCCESS.
+- Unsupported EXE upload: HTTP 400; audit result DENIED.
+- 11 MB TXT upload: HTTP 413; audit result DENIED.
+- The above scenarios were manually tested against the local application and SQL Server audit records.
+
+### Remaining Risks
+- File extensions and MIME types alone do not prove that file contents are safe.
+- S3 failures and database failures require additional failure-path testing.
+- Audit logging should be protected against unauthorized modification or deletion.
+- Duplicate requests may create multiple audit entries and should be investigated when unexpected.
