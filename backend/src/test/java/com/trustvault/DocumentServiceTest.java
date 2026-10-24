@@ -3,14 +3,19 @@ package com.trustvault;
 
 import com.trustvault.user.User;
 import com.trustvault.user.UserRepository;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
 import org.springframework.http.HttpStatus;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
+
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 
@@ -28,6 +33,9 @@ class DocumentServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private DocumentPermissionRepository permissionRepository;
 
     @Mock
     private S3StorageService s3StorageService;
@@ -50,6 +58,9 @@ class DocumentServiceTest {
                 "documents/test-id/contract.txt",
                 owner
         );
+
+        // Simulate the ID normally assigned when the entity is persisted.
+        ReflectionTestUtils.setField(document, "id", 1L);
     }
 
     @Test
@@ -76,21 +87,25 @@ class DocumentServiceTest {
 
         DocumentService.DownloadedDocument result =
                 documentService.downloadMyDocument(
-                        "owner.test@example.com", 1L);
+                        "owner.test@example.com",
+                        1L
+                );
 
         assertEquals("contract.txt", result.fileName());
         assertEquals("text/plain", result.contentType());
         assertEquals(inputStream, result.inputStream());
 
         verify(s3StorageService).downloadFile(
-                "documents/test-id/contract.txt");
+                "documents/test-id/contract.txt"
+        );
 
         verify(auditLogService).recordEvent(
                 "owner.test@example.com",
                 "DOCUMENT_DOWNLOAD",
                 1L,
                 "SUCCESS",
-                "Document downloaded by owner");
+                "Authorized download stream opened"
+        );
     }
 
     @Test
@@ -101,13 +116,25 @@ class DocumentServiceTest {
         when(owner.getEmail())
                 .thenReturn("owner.test@example.com");
 
+        when(permissionRepository
+                .findByDocument_IdAndRecipient_EmailIgnoreCase(
+                        1L,
+                        "other.test@example.com"
+                ))
+                .thenReturn(Optional.empty());
+
         ResponseStatusException exception = assertThrows(
                 ResponseStatusException.class,
                 () -> documentService.downloadMyDocument(
-                        "other.test@example.com", 1L)
+                        "other.test@example.com",
+                        1L
+                )
         );
 
-        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        assertEquals(
+                HttpStatus.NOT_FOUND,
+                exception.getStatusCode()
+        );
 
         verifyNoInteractions(s3StorageService);
 
@@ -116,7 +143,8 @@ class DocumentServiceTest {
                 "DOCUMENT_DOWNLOAD",
                 1L,
                 "DENIED",
-                "Document not found or access not permitted");
+                "Document not found or access not permitted"
+        );
     }
 
     @Test
@@ -127,10 +155,15 @@ class DocumentServiceTest {
         ResponseStatusException exception = assertThrows(
                 ResponseStatusException.class,
                 () -> documentService.downloadMyDocument(
-                        "owner.test@example.com", 999L)
+                        "owner.test@example.com",
+                        999L
+                )
         );
 
-        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        assertEquals(
+                HttpStatus.NOT_FOUND,
+                exception.getStatusCode()
+        );
 
         verifyNoInteractions(s3StorageService);
 
@@ -139,6 +172,7 @@ class DocumentServiceTest {
                 "DOCUMENT_DOWNLOAD",
                 999L,
                 "DENIED",
-                "Document not found or access not permitted");
+                "Document not found or access not permitted"
+        );
     }
 }
