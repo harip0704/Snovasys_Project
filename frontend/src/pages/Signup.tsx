@@ -1,9 +1,20 @@
 
 import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { apiRequest } from "../api/api";
 import "./Login.css";
 
+type SignupResponse = {
+  id?: number;
+  name?: string;
+  email?: string;
+  role?: string;
+  message?: string;
+};
+
 export default function Signup() {
+  const navigate = useNavigate();
+
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -11,30 +22,32 @@ export default function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    setNotice("");
 
-    if (
-      !fullName.trim() ||
-      !email.trim() ||
-      !password ||
-      !confirmPassword
-    ) {
+    const name = fullName.trim();
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!name || !normalizedEmail || !password || !confirmPassword) {
       setError("Please complete all required fields.");
       return;
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    if (name.length > 100) {
+      setError("Full name must not exceed 100 characters.");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       setError("Please enter a valid email address.");
       return;
     }
 
-    if (password.length < 8) {
-      setError("Password must contain at least 8 characters.");
+    if (password.length < 8 || password.length > 72) {
+      setError("Password must contain 8 to 72 characters.");
       return;
     }
 
@@ -48,9 +61,40 @@ export default function Signup() {
       return;
     }
 
-    setNotice(
-      "Form validation passed. Account creation will work after the secure backend API is connected."
-    );
+    setIsSubmitting(true);
+
+    try {
+      const response = await apiRequest<SignupResponse>(
+        "/api/auth/signup",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name,
+            email: normalizedEmail,
+            password,
+          }),
+        },
+      );
+
+      // Signup is complete, but the user must sign in separately.
+      navigate("/login", {
+        replace: true,
+        state: {
+          signupSuccess:
+            response?.message ||
+            "Account created successfully. Please sign in with your new account.",
+          signupEmail: normalizedEmail,
+        },
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to create your account. Please try again.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -71,9 +115,7 @@ export default function Signup() {
           </div>
 
           <div className="brand-content">
-            <span className="eyebrow">
-              YOUR SECURITY, OUR PRIORITY
-            </span>
+            <span className="eyebrow">YOUR SECURITY, OUR PRIORITY</span>
 
             <h2>
               One account.
@@ -84,8 +126,8 @@ export default function Signup() {
             </h2>
 
             <p className="brand-description">
-              Create your account to get ready for secure
-              document sharing and controlled collaboration.
+              Create your account to get ready for secure document
+              sharing and controlled collaboration.
             </p>
 
             <div className="security-features">
@@ -93,7 +135,9 @@ export default function Signup() {
                 <span className="feature-icon">◈</span>
                 <div>
                   <h3>Private by design</h3>
-                  <p>Documents should be accessible only to authorized users.</p>
+                  <p>
+                    Documents should be accessible only to authorized users.
+                  </p>
                 </div>
               </div>
 
@@ -101,7 +145,9 @@ export default function Signup() {
                 <span className="feature-icon">⌁</span>
                 <div>
                   <h3>Account security</h3>
-                  <p>Authentication will be handled by the secure backend.</p>
+                  <p>
+                    Authentication will be handled by the secure backend.
+                  </p>
                 </div>
               </div>
 
@@ -109,7 +155,9 @@ export default function Signup() {
                 <span className="feature-icon">⬡</span>
                 <div>
                   <h3>Accountability</h3>
-                  <p>Document activity will be recorded in the audit trail.</p>
+                  <p>
+                    Document activity will be recorded in the audit trail.
+                  </p>
                 </div>
               </div>
             </div>
@@ -170,12 +218,13 @@ export default function Signup() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   minLength={8}
+                  maxLength={72}
                   required
                 />
                 <button
                   type="button"
                   className="password-toggle"
-                  onClick={() => setShowPassword(!showPassword)}
+                  onClick={() => setShowPassword((previous) => !previous)}
                   aria-label={showPassword ? "Hide passwords" : "Show passwords"}
                 >
                   {showPassword ? "Hide" : "Show"}
@@ -217,14 +266,13 @@ export default function Signup() {
               </div>
             )}
 
-            {notice && (
-              <p role="status" aria-live="polite">
-                {notice}
-              </p>
-            )}
-
-            <button className="primary-login-button" type="submit">
-              Create account <span aria-hidden="true">→</span>
+            <button
+              className="primary-login-button"
+              type="submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Creating account..." : "Create account"}
+              {!isSubmitting && <span aria-hidden="true"> →</span>}
             </button>
           </form>
 

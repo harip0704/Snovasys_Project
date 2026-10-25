@@ -1,26 +1,47 @@
 
 import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { apiRequest } from "../api/api";
 import "./Login.css";
 
+type LoginResponse = {
+  message?: string;
+  email?: string;
+  name?: string;
+  role?: string;
+};
+
+type LoginLocationState = {
+  signupSuccess?: string;
+  signupEmail?: string;
+};
+
 export default function Login() {
-  const [email, setEmail] = useState("");
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const pageState = (location.state ?? {}) as LoginLocationState;
+
+  const [email, setEmail] = useState(pageState.signupEmail ?? "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice] = useState(pageState.signupSuccess ?? "");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
 
-    if (!email.trim() || !password) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail || !password) {
       setError("Please enter your email and password.");
       return;
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       setError("Please enter a valid email address.");
       return;
     }
@@ -28,10 +49,21 @@ export default function Login() {
     setLoading(true);
 
     try {
-      // TODO: Connect to the Spring Boot login API.
-      // Frontend validation alone is not authentication.
+      await apiRequest<LoginResponse>("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({
+          email: normalizedEmail,
+          password,
+        }),
+      });
+
+      // Navigate only after the backend login request succeeds.
+      navigate("/dashboard", { replace: true });
+    } catch (err) {
       setError(
-        "Authentication is not connected yet. Please connect the backend."
+        err instanceof Error
+          ? err.message
+          : "Sign-in failed. Please check your credentials and try again.",
       );
     } finally {
       setLoading(false);
@@ -40,18 +72,18 @@ export default function Login() {
 
   function handleSocialLogin(provider: "Google" | "GitHub") {
     setError(
-      `${provider} sign-in is not configured yet. Backend OAuth integration is required.`
+      `${provider} sign-in is not configured yet. Backend OAuth integration is required.`,
     );
   }
 
-  async function handlePasskey() {
+  function handlePasskey() {
     if (!window.PublicKeyCredential) {
       setError("Passkeys are not supported in this browser.");
       return;
     }
 
     setError(
-      "Passkey sign-in is not configured yet. Backend WebAuthn integration is required."
+      "Passkey sign-in is not configured yet. Backend WebAuthn integration is required.",
     );
   }
 
@@ -64,11 +96,7 @@ export default function Login() {
         <aside className="login-brand-panel">
           <div className="brand-logo">
             <div className="brand-icon">
-              <svg
-                viewBox="0 0 48 48"
-                fill="none"
-                aria-hidden="true"
-              >
+              <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
                 <path
                   d="M24 4 41 11V22C41 33 34 40 24 44 14 40 7 33 7 22V11L24 4Z"
                   stroke="currentColor"
@@ -157,19 +185,19 @@ export default function Login() {
             </p>
           </div>
 
+          {notice && (
+            <div className="login-notice" role="status" aria-live="polite">
+              {notice}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} noValidate>
             <div className="form-field">
               <label htmlFor="email">Email address</label>
 
               <div className="input-wrapper">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <rect
-                    x="3"
-                    y="5"
-                    width="18"
-                    height="14"
-                    rx="2"
-                  />
+                  <rect x="3" y="5" width="18" height="14" rx="2" />
                   <path d="m4 7 8 6 8-6" />
                 </svg>
 
@@ -188,20 +216,12 @@ export default function Login() {
             <div className="form-field">
               <div className="label-row">
                 <label htmlFor="password">Password</label>
-                <Link to="/forgot-password">
-                  Forgot password?
-                </Link>
+                <Link to="/forgot-password">Forgot password?</Link>
               </div>
 
               <div className="input-wrapper">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <rect
-                    x="4"
-                    y="10"
-                    width="16"
-                    height="11"
-                    rx="2"
-                  />
+                  <rect x="4" y="10" width="16" height="11" rx="2" />
                   <path d="M8 10V7a4 4 0 0 1 8 0v3" />
                   <path d="M12 14v3" />
                 </svg>
@@ -219,10 +239,8 @@ export default function Login() {
                 <button
                   type="button"
                   className="password-toggle"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-label={
-                    showPassword ? "Hide password" : "Show password"
-                  }
+                  onClick={() => setShowPassword((previous) => !previous)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? "Hide" : "Show"}
                 </button>
@@ -234,9 +252,7 @@ export default function Login() {
                 <input
                   type="checkbox"
                   checked={rememberMe}
-                  onChange={(event) =>
-                    setRememberMe(event.target.checked)
-                  }
+                  onChange={(event) => setRememberMe(event.target.checked)}
                 />
                 <span className="custom-checkbox" />
                 Remember me
@@ -271,7 +287,6 @@ export default function Login() {
             </button>
           </form>
 
-          {/* Create Account link */}
           <p className="signup-prompt">
             Don't have an account?{" "}
             <Link to="/signup">Create account</Link>
@@ -318,7 +333,7 @@ export default function Login() {
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path
                   fill="currentColor"
-                  d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.54v-2.1c-3.1.67-3.76-1.32-3.76-1.32-.5-1.28-1.23-1.62-1.23-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.15 1.71 1.15.99 1.7 2.6 1.21 3.23.92.1-.72.39-1.21.71-1.49-2.48-.28-5.09-1.24-5.09-5.52 0-1.22.44-2.22 1.15-3-.12-.28-.5-1.42.11-2.96 0 0 .94-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.11-1.44 3.04-.3 3.04-1.14.61 1.54 3.04-1.14 3.04 1.14.61 1.54.12 2.68.12 2.96.71.78 1.14 1.78 1.14 3.01 0 4.29-2.61 5.23-5.1 5.5.4.35.75 1.03.75 2.08v3.07c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z"
+                  d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.54v-2.1c-3.1.67-3.76-1.32-3.76-1.32-.5-1.28-1.23-1.62-1.23-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.15 1.71 1.15.99 1.7 2.6 1.21 3.23.92.1-.72.39-1.21.71-1.49-2.48-.28-5.09-1.24-5.09-5.52 0-1.22.44-2.22 1.15-3-.12-.28-.5-1.42.11-2.96 0 0 .94-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.11-1.44 3.04-.3 3.04-1.14.61 1.54 3.04-1.14 3.04 1.14.61 1.54.12 2.68.12 2.96.71.78 1.15 1.78 1.15 3.01 0 4.29-2.61 5.23-5.1 5.5.4.35.75 1.03.75 2.08v3.07c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z"
                 />
               </svg>
               GitHub

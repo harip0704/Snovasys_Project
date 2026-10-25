@@ -14,6 +14,7 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 
 @Service
 public class S3StorageService {
@@ -105,4 +106,27 @@ public class S3StorageService {
 
         return s3Client.getObject(request);
     }
+
+    
+    /**
+     * Deletes an object from the private S3 bucket.
+     * Call only after authorization has been verified.
+     */
+    public void deleteFile(String storageKey) {
+
+        if (storageKey == null
+                || storageKey.isBlank()
+                || !storageKey.startsWith(STORAGE_PREFIX)
+                || storageKey.contains("..")) {
+            throw new IllegalArgumentException("Invalid storage key");
+        }
+
+        DeleteObjectRequest request = DeleteObjectRequest.builder()
+                .bucket(bucketName)
+                .key(storageKey)
+                .build();
+
+        s3Client.deleteObject(request);
+    }
+
 }

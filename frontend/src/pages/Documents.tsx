@@ -1,9 +1,10 @@
-import { useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, DragEvent } from "react";
 import { Link } from "react-router-dom";
+import { apiRequest } from "../api/api";
 import "./Documents.css";
 
 type Theme = "light" | "dark";
-type DocumentStatus = "Protected" | "Restricted" | "Ready for review";
 type UploadStatus = "Success" | "Rejected";
 
 type DocumentItem = {
@@ -12,7 +13,7 @@ type DocumentItem = {
   category: string;
   owner: string;
   lastUpdated: string;
-  status: DocumentStatus;
+  status: string;
   size?: number;
 };
 
@@ -25,47 +26,18 @@ type UploadAttempt = {
   size?: number;
 };
 
+type DocumentsResponse = {
+  count: number;
+  documents: {
+    id: number;
+    fileName: string;
+    uploadedAt: string;
+    status: string;
+  }[];
+};
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = [".pdf", ".doc", ".docx", ".txt"];
-
-const initialDocuments: DocumentItem[] = [
-  {
-    id: "doc-001",
-    name: "Employment Agreement.pdf",
-    category: "HR",
-    owner: "Hari",
-    lastUpdated: "Oct 22, 2026",
-    status: "Protected",
-    size: 245760,
-  },
-  {
-    id: "doc-002",
-    name: "Client Contract.docx",
-    category: "Legal",
-    owner: "Hari",
-    lastUpdated: "Oct 21, 2026",
-    status: "Restricted",
-    size: 184320,
-  },
-  {
-    id: "doc-003",
-    name: "Salary Statement.pdf",
-    category: "Finance",
-    owner: "Hari",
-    lastUpdated: "Oct 20, 2026",
-    status: "Protected",
-    size: 97280,
-  },
-  {
-    id: "doc-004",
-    name: "Security Policy.txt",
-    category: "Security",
-    owner: "Hari",
-    lastUpdated: "Oct 19, 2026",
-    status: "Ready for review",
-    size: 12288,
-  },
-];
 
 function formatFileSize(bytes?: number): string {
   if (bytes === undefined || bytes < 0) return "Size unavailable";
@@ -79,19 +51,24 @@ function getFileExtension(fileName: string): string {
   return lastDot >= 0 ? fileName.slice(lastDot).toLowerCase() : "";
 }
 
-function getCurrentDate(): string {
-  return new Intl.DateTimeFormat("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date());
-}
-
 function getCurrentTime(): string {
   return new Intl.DateTimeFormat("en-IN", {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date());
+}
+
+function formatDate(date: string): string {
+  if (!date) return "Date unavailable";
+
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return date;
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(parsed);
 }
 
 function readSavedTheme(): Theme {
@@ -104,23 +81,59 @@ function readSavedTheme(): Theme {
   }
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "An unexpected error occurred.";
+}
+
 export default function Documents() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [theme, setTheme] = useState<Theme>(readSavedTheme);
-  const [documents, setDocuments] =
-    useState<DocumentItem[]>(initialDocuments);
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [pageError, setPageError] = useState("");
   const [uploadActivity, setUploadActivity] = useState<UploadAttempt[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("All categories");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [message, setMessage] = useState("");
   const [dragging, setDragging] = useState(false);
 
-  const categories = useMemo(
+  const loadDocuments = useCallback(async () => {
+    setLoading(true);
+    setPageError("");
+
+    try {
+      const response = await apiRequest<DocumentsResponse>("/api/documents");
+
+      setDocuments(
+        response.documents.map((document) => ({
+          id: String(document.id),
+          name: document.fileName,
+          category: "—",
+          owner: "You",
+          lastUpdated: formatDate(document.uploadedAt),
+          status: document.status,
+        })),
+      );
+    } catch (error) {
+      setPageError(getErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDocuments();
+  }, [loadDocuments]);
+
+  const statusOptions = useMemo(
     () => [
-      "All categories",
-      ...Array.from(new Set(documents.map((doc) => doc.category))).sort(),
+      "All statuses",
+      ...Array.from(new Set(documents.map((doc) => doc.status))).sort(),
     ],
     [documents],
   );
@@ -132,30 +145,18 @@ export default function Documents() {
       const matchesSearch =
         !query ||
         doc.name.toLowerCase().includes(query) ||
-        doc.owner.toLowerCase().includes(query) ||
-        doc.category.toLowerCase().includes(query);
-
-      const matchesCategory =
-        categoryFilter === "All categories" ||
-        doc.category === categoryFilter;
+        doc.id.toLowerCase().includes(query) ||
+        doc.status.toLowerCase().includes(query);
 
       const matchesStatus =
         statusFilter === "All statuses" || doc.status === statusFilter;
 
-      return matchesSearch && matchesCategory && matchesStatus;
+      return matchesSearch && matchesStatus;
     });
-  }, [documents, searchTerm, categoryFilter, statusFilter]);
+  }, [documents, searchTerm, statusFilter]);
 
-  const protectedCount = documents.filter(
-    (doc) => doc.status === "Protected",
-  ).length;
-
-  const restrictedCount = documents.filter(
-    (doc) => doc.status === "Restricted",
-  ).length;
-
-  const reviewCount = documents.filter(
-    (doc) => doc.status === "Ready for review",
+  const activeCount = documents.filter(
+    (doc) => doc.status.toUpperCase() === "ACTIVE",
   ).length;
 
   function showMessage(text: string) {
@@ -169,7 +170,7 @@ export default function Documents() {
     try {
       localStorage.setItem("trustvault-theme", nextTheme);
     } catch {
-      // Theme still changes for this page if storage is unavailable.
+      // The theme still changes for this page session.
     }
   }
 
@@ -177,90 +178,168 @@ export default function Documents() {
     setUploadActivity((previous) => [activity, ...previous].slice(0, 10));
   }
 
-  function processFiles(fileList: FileList | File[] | null) {
-    if (!fileList || fileList.length === 0) return;
+  function validateFile(file: File): string {
+    const extension = getFileExtension(file.name);
 
-    const files = Array.from(fileList);
+    if (file.size === 0) {
+      return "The selected file is empty.";
+    }
 
-    files.forEach((file) => {
-      const extension = getFileExtension(file.name);
-      let rejectionReason = "";
+    if (!ALLOWED_EXTENSIONS.includes(extension)) {
+      return "Unsupported file type. Choose PDF, DOC, DOCX or TXT.";
+    }
 
-      if (file.size === 0) {
-        rejectionReason = "The selected file is empty.";
-      } else if (!ALLOWED_EXTENSIONS.includes(extension)) {
-        rejectionReason =
-          "Unsupported file type. Choose PDF, DOC, DOCX or TXT.";
-      } else if (file.size > MAX_FILE_SIZE) {
-        rejectionReason =
-          "File exceeds the maximum allowed size of 10 MB.";
-      }
+    if (file.size > MAX_FILE_SIZE) {
+      return "File exceeds the maximum allowed size of 10 MB.";
+    }
 
-      if (rejectionReason) {
-        addActivity({
-          id: `${Date.now()}-${Math.random()}`,
-          name: file.name,
-          status: "Rejected",
-          message: rejectionReason,
-          time: getCurrentTime(),
-          size: file.size,
-        });
+    return "";
+  }
 
-        showMessage(`${file.name}: ${rejectionReason}`);
-        return;
-      }
+  async function downloadDocument(doc: DocumentItem) {
+    if (downloadingId !== null) return;
 
-      const duplicate = documents.some(
-        (doc) => doc.name.toLowerCase() === file.name.toLowerCase(),
+    setDownloadingId(doc.id);
+    setMessage("");
+
+    try {
+      const apiBaseUrl =
+        import.meta.env.VITE_API_BASE_URL || "http://localhost:8081";
+
+      const response = await fetch(
+        `${apiBaseUrl}/api/documents/${encodeURIComponent(doc.id)}/download`,
+        {
+          method: "GET",
+          credentials: "include",
+        },
       );
 
-      if (duplicate) {
-        const duplicateMessage =
-          "A document with this name already exists in the current list.";
+      if (!response.ok) {
+        let errorMessage = `Download failed (${response.status})`;
 
-        addActivity({
-          id: `${Date.now()}-${Math.random()}`,
-          name: file.name,
-          status: "Rejected",
-          message: duplicateMessage,
-          time: getCurrentTime(),
-          size: file.size,
-        });
+        try {
+          const data = await response.json();
+          errorMessage =
+            data.detail || data.message || data.error || errorMessage;
+        } catch {
+          // Keep the HTTP status message if the response isn't JSON.
+        }
 
-        showMessage(`${file.name}: ${duplicateMessage}`);
-        return;
+        throw new Error(errorMessage);
       }
 
-      const newDocument: DocumentItem = {
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+
+      anchor.href = objectUrl;
+      anchor.download = doc.name;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+
+      showMessage(`Download started for ${doc.name}.`);
+    } catch (error) {
+      showMessage(
+        `Unable to download ${doc.name}: ${getErrorMessage(error)}`,
+      );
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
+  async function uploadFile(file: File) {
+    const validationError = validateFile(file);
+
+    if (validationError) {
+      addActivity({
         id: `${Date.now()}-${Math.random()}`,
         name: file.name,
-        category: "Other",
-        owner: "Hari",
-        lastUpdated: getCurrentDate(),
-        status: "Ready for review",
+        status: "Rejected",
+        message: validationError,
+        time: getCurrentTime(),
         size: file.size,
-      };
-      
+      });
 
-      setDocuments((previous) => [newDocument, ...previous]);
+      showMessage(`${file.name}: ${validationError}`);
+      return;
+    }
+
+    const duplicate = documents.some(
+      (doc) => doc.name.toLowerCase() === file.name.toLowerCase(),
+    );
+
+    if (duplicate) {
+      const duplicateMessage =
+        "A document with this name already exists in your workspace.";
+
+      addActivity({
+        id: `${Date.now()}-${Math.random()}`,
+        name: file.name,
+        status: "Rejected",
+        message: duplicateMessage,
+        time: getCurrentTime(),
+        size: file.size,
+      });
+
+      showMessage(`${file.name}: ${duplicateMessage}`);
+      return;
+    }
+
+    setUploading(true);
+    setMessage("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      await apiRequest<unknown>("/api/documents", {
+        method: "POST",
+        body: formData,
+      });
 
       addActivity({
         id: `${Date.now()}-${Math.random()}`,
         name: file.name,
         status: "Success",
-        message:
-          "File selected successfully. It has not been uploaded to secure storage.",
+        message: "Your file was accepted for upload.",
         time: getCurrentTime(),
         size: file.size,
       });
 
-      showMessage(
-        `${file.name} selected successfully. Secure storage upload is not connected yet.`,
-      );
-    });
+      showMessage(`${file.name} uploaded successfully.`);
+
+      await loadDocuments();
+    } catch (error) {
+      const errorMessage = getErrorMessage(error);
+
+      addActivity({
+        id: `${Date.now()}-${Math.random()}`,
+        name: file.name,
+        status: "Rejected",
+        message: `Upload failed: ${errorMessage}`,
+        time: getCurrentTime(),
+        size: file.size,
+      });
+
+      showMessage(`Upload failed for ${file.name}: ${errorMessage}`);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function processFiles(fileList: FileList | File[] | null) {
+    if (!fileList || fileList.length === 0) return;
+
+    const files = Array.from(fileList);
+
+    for (const file of files) {
+      await uploadFile(file);
+    }
 
     setSearchTerm("");
-    setCategoryFilter("All categories");
     setStatusFilter("All statuses");
 
     if (fileInputRef.current) {
@@ -268,14 +347,14 @@ export default function Documents() {
     }
   }
 
-  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    processFiles(event.target.files);
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    void processFiles(event.target.files);
   }
 
-  function handleDrop(event: React.DragEvent<HTMLDivElement>) {
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setDragging(false);
-    processFiles(event.dataTransfer.files);
+    void processFiles(event.dataTransfer.files);
   }
 
   function removeActivity(id: string) {
@@ -285,17 +364,18 @@ export default function Documents() {
     showMessage("Activity item removed from this page.");
   }
 
-  function viewDocumentDetails(doc: DocumentItem) {
-    showMessage(
-      `${doc.name} — Category: ${doc.category}; Owner: ${doc.owner}; Status: ${doc.status}. Document details and access controls will be connected to the backend later.`,
-    );
-  }
-
   function clearFilters() {
     setSearchTerm("");
-    setCategoryFilter("All categories");
     setStatusFilter("All statuses");
     showMessage("Search and filters cleared.");
+  }
+
+  function statusClass(status: string): string {
+    const normalized = status.toUpperCase();
+
+    if (normalized === "ACTIVE") return "security-protected";
+    if (normalized === "RESTRICTED") return "security-restricted";
+    return "security-review";
   }
 
   return (
@@ -365,8 +445,10 @@ export default function Documents() {
             type="button"
             className="documents-upload-button"
             onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
           >
-            <span aria-hidden="true">＋</span> Select a document
+            <span aria-hidden="true">＋</span>
+            {uploading ? "Uploading..." : "Select a document"}
           </button>
 
           <input
@@ -376,6 +458,7 @@ export default function Documents() {
             accept=".pdf,.doc,.docx,.txt"
             multiple
             onChange={handleFileChange}
+            disabled={uploading}
           />
         </section>
 
@@ -402,115 +485,58 @@ export default function Documents() {
           <article className="documents-summary-card">
             <div className="documents-summary-top">
               <span className="documents-summary-icon summary-icon-violet">
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path
-                    d="M6 3.5h8l4 4V20H6V3.5Z"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M14 3.5V8h4M9 12h6M9 15.5h6"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                  />
-                </svg>
+                ▤
               </span>
               <span className="documents-summary-label">Total documents</span>
             </div>
             <strong className="documents-summary-number">
-              {documents.length}
+              {loading ? "…" : pageError ? "—" : documents.length}
             </strong>
             <span className="documents-summary-caption">
-              Files in this workspace
+              {loading
+                ? "Retrieving your documents"
+                : "Available in your workspace"}
             </span>
           </article>
 
           <article className="documents-summary-card">
             <div className="documents-summary-top">
               <span className="documents-summary-icon summary-icon-green">
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <rect
-                    x="5"
-                    y="10"
-                    width="14"
-                    height="11"
-                    rx="2"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                  />
-                  <path
-                    d="M8 10V7a4 4 0 0 1 8 0v3m-4 4v3"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                  />
-                </svg>
+                ♙
               </span>
-              <span className="documents-summary-label">Protected</span>
+              <span className="documents-summary-label">Active</span>
             </div>
             <strong className="documents-summary-number">
-              {protectedCount}
+              {loading || pageError ? "—" : activeCount}
             </strong>
-            <span className="documents-summary-caption">
-              Marked as protected
-            </span>
+            <span className="documents-summary-caption">Currently active</span>
           </article>
 
           <article className="documents-summary-card">
             <div className="documents-summary-top">
               <span className="documents-summary-icon summary-icon-blue">
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <circle
-                    cx="12"
-                    cy="12"
-                    r="8.5"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                  />
-                  <path
-                    d="M12 7.5v5l3.2 2"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                  />
-                </svg>
+                ◷
               </span>
-              <span className="documents-summary-label">Restricted</span>
+              <span className="documents-summary-label">Other statuses</span>
             </div>
             <strong className="documents-summary-number">
-              {restrictedCount}
+              {loading || pageError ? "—" : documents.length - activeCount}
             </strong>
-            <span className="documents-summary-caption">
-              Marked as restricted
-            </span>
+            <span className="documents-summary-caption">Not marked ACTIVE</span>
           </article>
 
           <article className="documents-summary-card">
             <div className="documents-summary-top">
               <span className="documents-summary-icon summary-icon-amber">
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <circle
-                    cx="12"
-                    cy="12"
-                    r="8.5"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                  />
-                  <path
-                    d="M12 7v5m0 4h.01"
-                    stroke="currentColor"
-                    strokeWidth="1.9"
-                    strokeLinecap="round"
-                  />
-                </svg>
+                !
               </span>
-              <span className="documents-summary-label">Ready for review</span>
+              <span className="documents-summary-label">Upload status</span>
             </div>
-            <strong className="documents-summary-number">{reviewCount}</strong>
+            <strong className="documents-summary-number">
+              {uploading ? "…" : "—"}
+            </strong>
             <span className="documents-summary-caption">
-              Awaiting review
+              {uploading ? "Upload in progress" : "No review workflow connected"}
             </span>
           </article>
         </section>
@@ -519,10 +545,10 @@ export default function Documents() {
           <div className="documents-section-heading">
             <div>
               <h2>Add documents</h2>
-              <p>Select files to add them to this page's local list.</p>
+              <p>Upload files securely to TrustVault.</p>
             </div>
             <span className="documents-local-badge">
-              <span /> Local preview
+              <span /> Secure upload
             </span>
           </div>
 
@@ -566,17 +592,19 @@ export default function Documents() {
               type="button"
               className="documents-browse-button"
               onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
             >
-              Browse files
+              {uploading ? "Uploading..." : "Browse files"}
             </button>
           </div>
 
           <div className="documents-security-note">
             <span aria-hidden="true">ⓘ</span>
             <p>
-              <strong>Security note:</strong> Files are only selected in this
-              browser and added to the page's current list. They are not
-              uploaded to AWS S3 or secure server storage yet.
+              <strong>Security note:</strong> Files are submitted securely for
+              processing. Only treat an upload as successful after the server
+              accepts it. Storage and access controls should be verified
+              separately.
             </p>
           </div>
         </section>
@@ -585,13 +613,14 @@ export default function Documents() {
           <div className="documents-section-heading documents-list-heading">
             <div>
               <h2>All documents</h2>
-              <p>
-                Browse your document list and check each item's current status.
-              </p>
+              <p>View and manage your documents.</p>
             </div>
             <span className="documents-result-count">
-              {filteredDocuments.length}{" "}
-              {filteredDocuments.length === 1 ? "document" : "documents"}
+              {loading
+                ? "Loading…"
+                : `${filteredDocuments.length} ${
+                    filteredDocuments.length === 1 ? "document" : "documents"
+                  }`}
             </span>
           </div>
 
@@ -614,7 +643,7 @@ export default function Documents() {
               </svg>
               <input
                 type="search"
-                placeholder="Search by name, owner or category..."
+                placeholder="Search by name, status or ID..."
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
                 aria-label="Search documents"
@@ -623,27 +652,15 @@ export default function Documents() {
 
             <select
               className="documents-filter-select"
-              value={categoryFilter}
-              onChange={(event) => setCategoryFilter(event.target.value)}
-              aria-label="Filter by category"
-            >
-              {categories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className="documents-filter-select"
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}
               aria-label="Filter by status"
             >
-              <option value="All statuses">All statuses</option>
-              <option value="Protected">Protected</option>
-              <option value="Restricted">Restricted</option>
-              <option value="Ready for review">Ready for review</option>
+              {statusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
             </select>
 
             <button
@@ -654,6 +671,15 @@ export default function Documents() {
               Clear
             </button>
           </div>
+
+          {pageError && (
+            <div className="documents-message" role="alert">
+              <span>{pageError}</span>
+              <button type="button" onClick={() => void loadDocuments()}>
+                Retry
+              </button>
+            </div>
+          )}
 
           <div className="documents-table-wrapper">
             <table className="documents-table">
@@ -669,107 +695,113 @@ export default function Documents() {
               </thead>
 
               <tbody>
-                {filteredDocuments.map((doc) => (
-                  <tr key={doc.id}>
-                    <td>
-                      <div className="documents-file-cell">
-                        <span
-                          className="documents-file-icon"
-                          aria-hidden="true"
-                        >
-                          <svg viewBox="0 0 24 24" fill="none">
-                            <path
-                              d="M6 3.5h8l4 4V20H6V3.5Z"
-                              stroke="currentColor"
-                              strokeWidth="1.6"
-                              strokeLinejoin="round"
-                            />
-                            <path
-                              d="M14 3.5V8h4"
-                              stroke="currentColor"
-                              strokeWidth="1.6"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                        </span>
-                        <span className="documents-file-info">
-                          <strong>{doc.name}</strong>
-                          <small>{formatFileSize(doc.size)}</small>
-                        </span>
-                      </div>
-                    </td>
-
-                    <td>
-                      <span className="documents-category">{doc.category}</span>
-                    </td>
-
-                    <td>
-                      <span className="documents-owner">
-                        <span className="documents-owner-avatar">
-                          {doc.owner.charAt(0).toUpperCase()}
-                        </span>
-                        {doc.owner}
-                      </span>
-                    </td>
-
-                    <td className="documents-date">{doc.lastUpdated}</td>
-
-                    <td>
-                      <span
-                        className={`document-security ${
-                          doc.status === "Protected"
-                            ? "security-protected"
-                            : doc.status === "Restricted"
-                              ? "security-restricted"
-                              : "security-review"
-                        }`}
-                      >
-                        <span className="document-security-dot" />
-                        {doc.status}
-                      </span>
-                    </td>
-
-                    <td>
-                      <button
-                        type="button"
-                        className="documents-row-action"
-                        onClick={() => viewDocumentDetails(doc)}
-                      >
-                        View details
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-
-                {filteredDocuments.length === 0 && (
+                {loading && (
                   <tr>
                     <td colSpan={6}>
                       <div className="documents-empty-state">
-                        <span aria-hidden="true">⌕</span>
-                        <strong>No documents found</strong>
-                        <p>
-                          Try another search term or clear the selected filters.
-                        </p>
-                        <button
-                          type="button"
-                          className="documents-row-action"
-                          onClick={clearFilters}
-                        >
-                          Clear filters
-                        </button>
+                        <strong>Loading documents…</strong>
+                        <p>Getting your documents ready.</p>
                       </div>
                     </td>
                   </tr>
                 )}
+
+                {!loading &&
+                  !pageError &&
+                  filteredDocuments.map((doc) => (
+                    <tr key={doc.id}>
+                      <td>
+                        <div className="documents-file-cell">
+                          <span
+                            className="documents-file-icon"
+                            aria-hidden="true"
+                          >
+                            ▤
+                          </span>
+                          <span className="documents-file-info">
+                            <strong>{doc.name}</strong>
+                            <small>ID: {doc.id}</small>
+                          </span>
+                        </div>
+                      </td>
+
+                      <td>
+                        <span className="documents-category">
+                          {doc.category}
+                        </span>
+                      </td>
+
+                      <td>
+                        <span className="documents-owner">
+                          <span className="documents-owner-avatar">Y</span>
+                          {doc.owner}
+                        </span>
+                      </td>
+
+                      <td className="documents-date">{doc.lastUpdated}</td>
+
+                      <td>
+                        <span
+                          className={`document-security ${statusClass(doc.status)}`}
+                        >
+                          <span className="document-security-dot" />
+                          {doc.status}
+                        </span>
+                      </td>
+
+                      <td>
+                        <button
+                          type="button"
+                          className="documents-row-action"
+                          onClick={() => void downloadDocument(doc)}
+                          disabled={downloadingId !== null}
+                          aria-label={`Download ${doc.name}`}
+                        >
+                          {downloadingId === doc.id
+                            ? "Downloading..."
+                            : "Download"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+
+                {!loading &&
+                  !pageError &&
+                  filteredDocuments.length === 0 && (
+                    <tr>
+                      <td colSpan={6}>
+                        <div className="documents-empty-state">
+                          <span aria-hidden="true">⌕</span>
+                          <strong>
+                            {documents.length === 0
+                              ? "No documents found"
+                              : "No matching documents"}
+                          </strong>
+                          <p>
+                            {documents.length === 0
+                              ? "Upload a file to add a document to your workspace."
+                              : "Try another search term or clear the filters."}
+                          </p>
+                          <button
+                            type="button"
+                            className="documents-row-action"
+                            onClick={clearFilters}
+                          >
+                            Clear filters
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
               </tbody>
             </table>
           </div>
 
           <p className="documents-demo-footnote">
             <span aria-hidden="true">ⓘ</span>
-            Current document entries are demonstration data and browser-session
-            state. Security labels are illustrative and do not confirm that
-            backend permissions have been enforced.
+            Document details shown here reflect the information currently
+            available. Category, file size, sharing details, and access
+            permissions are not provided by the current document-list response.
           </p>
         </section>
 
@@ -777,7 +809,7 @@ export default function Documents() {
           <div className="documents-section-heading">
             <div>
               <h2>Recent file activity</h2>
-              <p>Review the files selected or rejected during this visit.</p>
+              <p>Upload attempts made during this page session.</p>
             </div>
             <span className="documents-activity-count">
               {uploadActivity.length} / 10
@@ -794,7 +826,7 @@ export default function Documents() {
               </span>
               <div>
                 <strong>No recent file activity</strong>
-                <p>When you select a file, its result will appear here.</p>
+                <p>Upload attempts will appear here.</p>
               </div>
             </div>
           ) : (
@@ -831,7 +863,7 @@ export default function Documents() {
                     }`}
                   >
                     <span />
-                    {activity.status === "Success" ? "Selected" : "Rejected"}
+                    {activity.status === "Success" ? "Uploaded" : "Failed"}
                   </span>
 
                   <button
@@ -859,3 +891,5 @@ export default function Documents() {
     </div>
   );
 }
+
+

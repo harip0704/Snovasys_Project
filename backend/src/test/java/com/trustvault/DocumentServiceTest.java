@@ -1,4 +1,3 @@
-
 package com.trustvault;
 
 import com.trustvault.user.User;
@@ -22,6 +21,8 @@ import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
@@ -47,11 +48,16 @@ class DocumentServiceTest {
     private DocumentService documentService;
 
     private User owner;
+    private User recipient;
     private Document document;
+
+    private static final String OWNER_EMAIL = "owner.test@example.com";
+    private static final String RECIPIENT_EMAIL = "recipient.test@example.com";
 
     @BeforeEach
     void setUp() {
         owner = mock(User.class);
+        recipient = mock(User.class);
 
         document = new Document(
                 "contract.txt",
@@ -59,17 +65,15 @@ class DocumentServiceTest {
                 owner
         );
 
-        // Simulate the ID normally assigned when the entity is persisted.
         ReflectionTestUtils.setField(document, "id", 1L);
     }
 
     @Test
     void ownerCanDownloadOwnDocument() {
+        when(owner.getEmail()).thenReturn(OWNER_EMAIL);
+
         when(documentRepository.findById(1L))
                 .thenReturn(Optional.of(document));
-
-        when(owner.getEmail())
-                .thenReturn("owner.test@example.com");
 
         @SuppressWarnings("unchecked")
         ResponseInputStream<GetObjectResponse> inputStream =
@@ -86,26 +90,21 @@ class DocumentServiceTest {
                 .thenReturn(inputStream);
 
         DocumentService.DownloadedDocument result =
-                documentService.downloadMyDocument(
-                        "owner.test@example.com",
-                        1L
-                );
+                documentService.downloadMyDocument(OWNER_EMAIL, 1L);
 
         assertEquals("contract.txt", result.fileName());
         assertEquals("text/plain", result.contentType());
         assertEquals(inputStream, result.inputStream());
 
         verify(s3StorageService).downloadFile(
-                "documents/test-id/contract.txt"
-        );
+                "documents/test-id/contract.txt");
 
         verify(auditLogService).recordEvent(
-                "owner.test@example.com",
+                OWNER_EMAIL,
                 "DOCUMENT_DOWNLOAD",
                 1L,
                 "SUCCESS",
-                "Authorized download stream opened"
-        );
+                "Authorized download stream opened");
     }
 
     @Test
@@ -113,38 +112,26 @@ class DocumentServiceTest {
         when(documentRepository.findById(1L))
                 .thenReturn(Optional.of(document));
 
-        when(owner.getEmail())
-                .thenReturn("owner.test@example.com");
-
         when(permissionRepository
                 .findByDocument_IdAndRecipient_EmailIgnoreCase(
-                        1L,
-                        "other.test@example.com"
-                ))
+                        1L, RECIPIENT_EMAIL))
                 .thenReturn(Optional.empty());
 
         ResponseStatusException exception = assertThrows(
                 ResponseStatusException.class,
                 () -> documentService.downloadMyDocument(
-                        "other.test@example.com",
-                        1L
-                )
-        );
+                        RECIPIENT_EMAIL, 1L));
 
-        assertEquals(
-                HttpStatus.NOT_FOUND,
-                exception.getStatusCode()
-        );
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
 
         verifyNoInteractions(s3StorageService);
 
         verify(auditLogService).recordEvent(
-                "other.test@example.com",
+                RECIPIENT_EMAIL,
                 "DOCUMENT_DOWNLOAD",
                 1L,
                 "DENIED",
-                "Document not found or access not permitted"
-        );
+                "Document not found or access not permitted");
     }
 
     @Test
@@ -155,24 +142,126 @@ class DocumentServiceTest {
         ResponseStatusException exception = assertThrows(
                 ResponseStatusException.class,
                 () -> documentService.downloadMyDocument(
-                        "owner.test@example.com",
-                        999L
-                )
-        );
+                        OWNER_EMAIL, 999L));
 
-        assertEquals(
-                HttpStatus.NOT_FOUND,
-                exception.getStatusCode()
-        );
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
 
         verifyNoInteractions(s3StorageService);
 
         verify(auditLogService).recordEvent(
-                "owner.test@example.com",
+                OWNER_EMAIL,
                 "DOCUMENT_DOWNLOAD",
                 999L,
                 "DENIED",
-                "Document not found or access not permitted"
-        );
+                "Document not found or access not permitted");
+    }
+
+    @Test
+    void readPermissionAllowsViewButDeniesRenameAndDelete() {
+        DocumentPermission permission = new DocumentPermission(
+                document, recipient, PermissionType.READ);
+
+        when(documentRepository.findById(1L))
+                .thenReturn(Optional.of(document));
+
+        when(permissionRepository
+                .findByDocument_IdAndRecipient_EmailIgnoreCase(
+                        1L, RECIPIENT_EMAIL))
+                .thenReturn(Optional.of(permission));
+
+        assertTrue(documentService.hasPermission(
+                RECIPIENT_EMAIL, 1L, PermissionType.READ));
+
+        assertFalse(documentService.hasPermission(
+                RECIPIENT_EMAIL, 1L, PermissionType.WRITE));
+
+        assertFalse(documentService.hasPermission(
+                RECIPIENT_EMAIL, 1L, PermissionType.DELETE));
+    }
+
+    @Test
+    void writePermissionAllowsRenameButDeniesViewAndDownload() {
+        DocumentPermission permission = new DocumentPermission(
+                document, recipient, PermissionType.WRITE);
+
+        when(documentRepository.findById(1L))
+                .thenReturn(Optional.of(document));
+
+        when(permissionRepository
+                .findByDocument_IdAndRecipient_EmailIgnoreCase(
+                        1L, RECIPIENT_EMAIL))
+                .thenReturn(Optional.of(permission));
+
+        assertFalse(documentService.hasPermission(
+                RECIPIENT_EMAIL, 1L, PermissionType.READ));
+
+        assertTrue(documentService.hasPermission(
+                RECIPIENT_EMAIL, 1L, PermissionType.WRITE));
+
+        assertFalse(documentService.hasPermission(
+                RECIPIENT_EMAIL, 1L, PermissionType.DELETE));
+    }
+
+    @Test
+    void readWritePermissionAllowsReadAndWriteButNotDelete() {
+        DocumentPermission permission = new DocumentPermission(
+                document, recipient, PermissionType.READ_WRITE);
+
+        when(documentRepository.findById(1L))
+                .thenReturn(Optional.of(document));
+
+        when(permissionRepository
+                .findByDocument_IdAndRecipient_EmailIgnoreCase(
+                        1L, RECIPIENT_EMAIL))
+                .thenReturn(Optional.of(permission));
+
+        assertTrue(documentService.hasPermission(
+                RECIPIENT_EMAIL, 1L, PermissionType.READ));
+
+        assertTrue(documentService.hasPermission(
+                RECIPIENT_EMAIL, 1L, PermissionType.WRITE));
+
+        assertFalse(documentService.hasPermission(
+                RECIPIENT_EMAIL, 1L, PermissionType.DELETE));
+    }
+
+    @Test
+    void revokedPermissionDeniesSubsequentAccessCheck() {
+        when(documentRepository.findById(1L))
+                .thenReturn(Optional.of(document));
+
+        when(permissionRepository
+                .findByDocument_IdAndRecipient_EmailIgnoreCase(
+                        1L, RECIPIENT_EMAIL))
+                .thenReturn(Optional.empty());
+
+        assertFalse(documentService.hasPermission(
+                RECIPIENT_EMAIL, 1L, PermissionType.READ));
+
+        assertFalse(documentService.hasPermission(
+                RECIPIENT_EMAIL, 1L, PermissionType.WRITE));
+    }
+
+    @Test
+    void requirePermissionThrowsForbiddenWhenAccessIsDenied() {
+        when(permissionRepository
+                .findByDocument_IdAndRecipient_EmailIgnoreCase(
+                        1L, RECIPIENT_EMAIL))
+                .thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> documentService.requirePermission(
+                        RECIPIENT_EMAIL,
+                        document,
+                        PermissionType.READ));
+
+        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+
+        verify(auditLogService).log(
+                RECIPIENT_EMAIL,
+                1L,
+                "ACCESS_READ",
+                "DENIED");
     }
 }

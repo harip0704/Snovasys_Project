@@ -1,7 +1,13 @@
 
 package com.trustvault;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
 import java.time.LocalDateTime;
 
 @Entity
@@ -31,6 +37,7 @@ public class AuditLog {
     private LocalDateTime createdAt;
 
     protected AuditLog() {
+        // Required by JPA
     }
 
     public AuditLog(
@@ -40,7 +47,19 @@ public class AuditLog {
             String result,
             String details) {
 
-        this.actorEmail = actorEmail;
+        if (actorEmail == null || actorEmail.isBlank()) {
+            throw new IllegalArgumentException("Actor email is required");
+        }
+
+        if (action == null || action.isBlank()) {
+            throw new IllegalArgumentException("Audit action is required");
+        }
+
+        if (result == null || result.isBlank()) {
+            throw new IllegalArgumentException("Audit result is required");
+        }
+
+        this.actorEmail = actorEmail.trim();
         this.action = action;
         this.documentId = documentId;
         this.result = result;
@@ -48,8 +67,9 @@ public class AuditLog {
         this.createdAt = LocalDateTime.now();
     }
 
-    public Long getId() {
-        return id;
+     public Long getId() {
+    return id;
+
     }
 
     public String getActorEmail() {

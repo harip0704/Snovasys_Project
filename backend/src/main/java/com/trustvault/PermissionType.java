@@ -1,7 +1,9 @@
-
 package com.trustvault;
 
 public enum PermissionType {
     READ,
-    EDIT
+    WRITE,
+    READ_WRITE,
+    SHARE,
+    DELETE
 }

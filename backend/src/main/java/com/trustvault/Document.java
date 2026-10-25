@@ -2,7 +2,15 @@
 package com.trustvault;
 
 import com.trustvault.user.User;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
 
 import java.time.LocalDateTime;
 
@@ -17,8 +25,6 @@ public class Document {
     @Column(nullable = false, length = 255)
     private String fileName;
 
-    // Private storage lo file location/key.
-    // Actual file content ni SQL Server lo store cheyyamu.
     @Column(nullable = false, unique = true, length = 512)
     private String storageKey;
 
@@ -33,10 +39,11 @@ public class Document {
     private String status = "ACTIVE";
 
     protected Document() {
+        // Required by JPA
     }
 
     public Document(String fileName, String storageKey, User owner) {
-        this.fileName = fileName;
+        renameTo(fileName);
         this.storageKey = storageKey;
         this.owner = owner;
         this.uploadedAt = LocalDateTime.now();
@@ -49,6 +56,27 @@ public class Document {
 
     public String getFileName() {
         return fileName;
+    }
+
+    /**
+     * Changes the displayed filename without changing the S3 storage key.
+     */
+    public void renameTo(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            throw new IllegalArgumentException("File name is required");
+        }
+
+        String normalized = fileName.trim();
+
+        if (normalized.length() > 255
+                || normalized.contains("/")
+                || normalized.contains("\\")
+                || normalized.contains("\r")
+                || normalized.contains("\n")) {
+            throw new IllegalArgumentException("Invalid file name");
+        }
+
+        this.fileName = normalized;
     }
 
     public String getStorageKey() {

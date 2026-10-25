@@ -46,101 +46,135 @@ public class DocumentService {
         this.auditLogService = auditLogService;
     }
 
-    public record DownloadedDocument(
-            String fileName,
-            String contentType,
-            ResponseInputStream<GetObjectResponse> inputStream) {
-    }
-
     @Transactional(readOnly = true)
     public List<Document> getMyDocuments(String email) {
-        String actorEmail = normalizeEmail(email);
-
-        User user = userRepository.findByEmailIgnoreCase(actorEmail)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.UNAUTHORIZED,
-                        "Authentication required"));
+        User user = findUser(email);
 
         return documentRepository
                 .findAllByOwner_IdOrderByUploadedAtDesc(user.getId());
     }
 
     @Transactional(readOnly = true)
-    public Document getMyDocumentById(
-            String email,
-            Long documentId) {
+    public List<DocumentPermission> getSharedDocuments(String email) {
+        return permissionRepository
+                .findAllByRecipient_EmailIgnoreCaseOrderByGrantedAtDesc(
+                        normalizeEmail(email));
+    }
 
-        String actorEmail = normalizeEmail(email);
-        Document document = findDocumentOrNotFound(
-                actorEmail,
+    @Transactional(readOnly = true)
+    public List<DocumentPermission> getOwnedDocumentPermissions(
+            String email) {
+
+        User owner = findUser(email);
+
+        return permissionRepository
+                .findAllByDocument_Owner_EmailIgnoreCaseOrderByGrantedAtDesc(
+                        owner.getEmail());
+    }
+
+    @Transactional
+    public Document getMyDocumentById(String email, Long documentId) {
+        Document document = findDocumentOrNotFound(documentId);
+
+        requirePermission(email, document, PermissionType.READ);
+
+        recordAudit(
+                normalizeEmail(email),
                 documentId,
-                "DOCUMENT_VIEW");
-
-        requireAccess(document, actorEmail, "DOCUMENT_VIEW");
-
-        auditLogService.recordEvent(
-                actorEmail,
                 "DOCUMENT_VIEW",
-                documentId,
-                "SUCCESS",
-                "Document metadata accessed by an authorized user");
+                "SUCCESS");
 
         return document;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public DownloadedDocument downloadMyDocument(
             String email,
             Long documentId) {
 
-        String actorEmail = normalizeEmail(email);
-        Document document = findDocumentOrNotFound(
-                actorEmail,
-                documentId,
-                "DOCUMENT_DOWNLOAD");
+        String normalizedEmail = normalizeEmail(email);
 
-        // Always authorize before contacting S3.
-        requireAccess(document, actorEmail, "DOCUMENT_DOWNLOAD");
+        Document document = documentRepository.findById(documentId)
+                .orElse(null);
+
+        if (document == null) {
+            auditLogService.recordEvent(
+                    normalizedEmail,
+                    "DOCUMENT_DOWNLOAD",
+                    documentId,
+                    "DENIED",
+                    "Document not found or access not permitted");
+
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Document not found or access not permitted");
+        }
+
+        boolean isOwner = document.getOwner() != null
+                && document.getOwner().getEmail() != null
+                && document.getOwner().getEmail()
+                        .equalsIgnoreCase(normalizedEmail);
+
+        boolean hasReadPermission = isOwner
+                || hasPermission(
+                        normalizedEmail,
+                        documentId,
+                        PermissionType.READ);
+
+        if (!hasReadPermission) {
+            auditLogService.recordEvent(
+                    normalizedEmail,
+                    "DOCUMENT_DOWNLOAD",
+                    documentId,
+                    "DENIED",
+                    "Document not found or access not permitted");
+
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Document not found or access not permitted");
+        }
+
+        final ResponseInputStream<GetObjectResponse> inputStream;
 
         try {
-            ResponseInputStream<GetObjectResponse> inputStream =
-                    s3StorageService.downloadFile(document.getStorageKey());
+            inputStream = s3StorageService.downloadFile(
+                    document.getStorageKey());
 
             if (inputStream == null) {
                 throw new IllegalStateException(
-                        "Storage returned no download stream");
+                        "Document download stream is unavailable");
             }
-
-            String contentType = inputStream.response().contentType();
-
-            if (contentType == null || contentType.isBlank()) {
-                contentType = "application/octet-stream";
-            }
-
-            auditLogService.recordEvent(
-                    actorEmail,
-                    "DOCUMENT_DOWNLOAD",
-                    documentId,
-                    "SUCCESS",
-                    "Authorized download stream opened");
-
-            return new DownloadedDocument(
-                    document.getFileName(),
-                    contentType,
-                    inputStream);
 
         } catch (RuntimeException exception) {
             auditLogService.recordEvent(
-                    actorEmail,
+                    normalizedEmail,
                     "DOCUMENT_DOWNLOAD",
                     documentId,
-                    "FAILURE",
-                    "Storage could not open the requested download");
+                    "FAILED",
+                    "Unable to open the document download stream");
 
             throw new ResponseStatusException(
                     HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Download failed. Please try again.");
+                    "Unable to download the document");
         }
+
+        String contentType = inputStream.response().contentType();
+
+        if (contentType == null || contentType.isBlank()) {
+            contentType = "application/octet-stream";
+        }
+
+        auditLogService.recordEvent(
+                normalizedEmail,
+                "DOCUMENT_DOWNLOAD",
+                documentId,
+                "SUCCESS",
+                "Authorized download stream opened");
+
+        return new DownloadedDocument(
+                document.getFileName(),
+                contentType,
+                inputStream);
     }
 
     @Transactional
@@ -148,222 +182,268 @@ public class DocumentService {
             String email,
             MultipartFile file) {
 
-        String actorEmail = normalizeEmail(email);
+        User owner = findUser(email);
 
-        User user = userRepository.findByEmailIgnoreCase(actorEmail)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.UNAUTHORIZED,
-                        "Authentication required"));
+        validateUpload(file);
 
-        validateUpload(actorEmail, file);
-
-        String originalName = file.getOriginalFilename().trim();
-
-        String contentType = file.getContentType();
-
-        if (contentType == null || contentType.isBlank()) {
-            contentType = "application/octet-stream";
-        }
+        String originalFileName = file.getOriginalFilename().trim();
+        String storageKey;
 
         try (InputStream inputStream = file.getInputStream()) {
 
-            String storageKey = s3StorageService.uploadFile(
-                    originalName,
-                    contentType,
+            storageKey = s3StorageService.uploadFile(
+                    originalFileName,
+                    file.getContentType(),
                     inputStream,
                     file.getSize());
 
-            if (storageKey == null || storageKey.isBlank()) {
-                throw new IllegalStateException(
-                        "Storage did not return a storage key");
-            }
-
-            Document document = new Document(
-                    originalName,
-                    storageKey,
-                    user);
-
-            Document savedDocument = documentRepository.save(document);
-
-            auditLogService.recordEvent(
-                    actorEmail,
-                    "DOCUMENT_UPLOAD",
-                    savedDocument.getId(),
-                    "SUCCESS",
-                    "Document uploaded and metadata saved");
-
-            return savedDocument;
-
         } catch (IOException | RuntimeException exception) {
-            auditLogService.recordEvent(
-                    actorEmail,
-                    "DOCUMENT_UPLOAD",
+
+            recordAudit(
+                    normalizeEmail(email),
                     null,
-                    "FAILURE",
-                    "Upload failed during storage or metadata processing");
+                    "DOCUMENT_UPLOAD",
+                    "FAILED");
 
             throw new ResponseStatusException(
                     HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Upload failed. Please try again.");
+                    "Unable to upload the document");
         }
-    }
 
-    private Document findDocumentOrNotFound(
-            String actorEmail,
-            Long documentId,
-            String action) {
+        try {
+            Document document = new Document(
+                    originalFileName,
+                    storageKey,
+                    owner);
 
-        if (documentId == null || documentId <= 0) {
-            recordDenied(actorEmail, action, documentId);
+            Document saved = documentRepository.save(document);
+
+            recordAudit(
+                    normalizeEmail(email),
+                    saved.getId(),
+                    "DOCUMENT_UPLOAD",
+                    "SUCCESS");
+
+            return saved;
+
+        } catch (RuntimeException exception) {
             throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "Document not found");
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "File was stored, but document metadata could not be saved. Contact the administrator.");
         }
-
-        return documentRepository.findById(documentId)
-                .orElseThrow(() -> {
-                    recordDenied(actorEmail, action, documentId);
-
-                    return new ResponseStatusException(
-                            HttpStatus.NOT_FOUND,
-                            "Document not found");
-                });
     }
 
-    private void requireAccess(
-            Document document,
-            String actorEmail,
-            String action) {
+    @Transactional
+    public void deleteDocument(String email, Long documentId) {
+        Document document = findDocumentOrNotFound(documentId);
 
-        if (canAccessDocument(document, actorEmail)) {
-            return;
+        requirePermission(email, document, PermissionType.DELETE);
+
+        try {
+            s3StorageService.deleteFile(document.getStorageKey());
+
+        } catch (RuntimeException exception) {
+            recordAudit(
+                    normalizeEmail(email),
+                    documentId,
+                    "DOCUMENT_DELETE",
+                    "FAILED");
+
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Unable to delete the stored document");
         }
 
-        recordDenied(actorEmail, action, document.getId());
+        documentRepository.delete(document);
 
-        throw new ResponseStatusException(
-                HttpStatus.NOT_FOUND,
-                "Document not found");
+        recordAudit(
+                normalizeEmail(email),
+                documentId,
+                "DOCUMENT_DELETE",
+                "SUCCESS");
     }
 
-    private boolean canAccessDocument(
-            Document document,
-            String actorEmail) {
+    @Transactional(readOnly = true)
+    public boolean hasPermission(
+            String email,
+            Long documentId,
+            PermissionType requiredPermission) {
 
-        if (document.getOwner().getEmail()
-                .equalsIgnoreCase(actorEmail)) {
+        Document document = findDocumentOrNotFound(documentId);
+        String normalizedEmail = normalizeEmail(email);
+
+        if (isOwner(normalizedEmail, document)) {
             return true;
         }
 
         return permissionRepository
                 .findByDocument_IdAndRecipient_EmailIgnoreCase(
-                        document.getId(),
-                        actorEmail)
-                .map(permission ->
-                        permission.getPermissionType() == PermissionType.READ
-                        || permission.getPermissionType() == PermissionType.EDIT)
+                        documentId,
+                        normalizedEmail)
+                .map(permission -> grants(
+                        permission.getPermissionType(),
+                        requiredPermission))
                 .orElse(false);
     }
 
-    private void validateUpload(
-            String actorEmail,
-            MultipartFile file) {
+    @Transactional
+    public void requirePermission(
+            String email,
+            Document document,
+            PermissionType requiredPermission) {
 
-        if (file == null || file.isEmpty()) {
-            recordUploadDenial(
-                    actorEmail,
-                    "Upload rejected: no file or empty file");
+        String normalizedEmail = normalizeEmail(email);
+
+        if (isOwner(normalizedEmail, document)) {
+            return;
+        }
+
+        boolean allowed = permissionRepository
+                .findByDocument_IdAndRecipient_EmailIgnoreCase(
+                        document.getId(),
+                        normalizedEmail)
+                .map(permission -> grants(
+                        permission.getPermissionType(),
+                        requiredPermission))
+                .orElse(false);
+
+        if (!allowed) {
+            recordAudit(
+                    normalizedEmail,
+                    document.getId(),
+                    "ACCESS_" + requiredPermission.name(),
+                    "DENIED");
 
             throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "You do not have permission to perform this action");
+        }
+    }
+
+    private boolean isOwner(String email, Document document) {
+        return document.getOwner() != null
+                && document.getOwner().getEmail() != null
+                && normalizeEmail(document.getOwner().getEmail())
+                        .equals(normalizeEmail(email));
+    }
+
+    /**
+     * Permission rules:
+     * READ       -> READ only
+     * WRITE      -> WRITE only
+     * READ_WRITE -> READ and WRITE
+     * DELETE     -> DELETE only
+     *
+     * The document owner is handled separately and has full access.
+     */
+    private boolean grants(
+            PermissionType granted,
+            PermissionType required) {
+
+        if (granted == null || required == null) {
+            return false;
+        }
+
+        if (granted == required) {
+            return true;
+        }
+
+        if (granted == PermissionType.READ_WRITE) {
+            return required == PermissionType.READ
+                    || required == PermissionType.WRITE;
+        }
+
+        return false;
+    }
+
+    private Document findDocumentOrNotFound(Long documentId) {
+        return documentRepository.findById(documentId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Document not found"));
+    }
+
+    private User findUser(String email) {
+        String normalizedEmail = normalizeEmail(email);
+
+        return userRepository.findByEmailIgnoreCase(normalizedEmail)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNAUTHORIZED,
+                        "Authenticated user was not found"));
+    }
+
+    private void validateUpload(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Please select a non-empty file");
+                    "Please select a file to upload");
         }
 
         if (file.getSize() > MAX_FILE_SIZE) {
-            recordUploadDenial(
-                    actorEmail,
-                    "Upload rejected: file exceeds size limit");
-
             throw new ResponseStatusException(
                     HttpStatus.CONTENT_TOO_LARGE,
-                    "Maximum file size is 10 MB");
+                    "File size must not exceed 10 MB");
         }
 
-        String originalName = file.getOriginalFilename();
+        String fileName = file.getOriginalFilename();
 
-        if (originalName == null || originalName.isBlank()) {
-            rejectFileName(actorEmail);
+        if (fileName == null || fileName.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Invalid file name");
         }
 
-        String fileName = originalName.trim();
+        String normalizedName =
+                fileName.trim().toLowerCase(Locale.ROOT);
 
-        if (fileName.length() > 255
-                || fileName.equals(".")
-                || fileName.equals("..")
-                || fileName.contains("/")
-                || fileName.contains("\\")
-                || fileName.chars().anyMatch(Character::isISOControl)) {
-            rejectFileName(actorEmail);
+        if (normalizedName.contains("/")
+                || normalizedName.contains("\\")
+                || normalizedName.contains("\r")
+                || normalizedName.contains("\n")
+                || normalizedName.equals(".")
+                || normalizedName.equals("..")) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Invalid file name");
         }
-
-        String lowerName = fileName.toLowerCase(Locale.ROOT);
 
         boolean allowed = ALLOWED_EXTENSIONS.stream()
-                .anyMatch(lowerName::endsWith);
+                .anyMatch(normalizedName::endsWith);
 
         if (!allowed) {
-            recordUploadDenial(
-                    actorEmail,
-                    "Upload rejected: unsupported file extension");
-
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Only PDF, DOC, DOCX and TXT files are allowed");
         }
     }
 
-    private void rejectFileName(String actorEmail) {
-        recordUploadDenial(
-                actorEmail,
-                "Upload rejected: invalid file name");
-
-        throw new ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Invalid file name");
-    }
-
-    private void recordUploadDenial(
-            String actorEmail,
-            String details) {
-
-        auditLogService.recordEvent(
-                actorEmail,
-                "DOCUMENT_UPLOAD",
-                null,
-                "DENIED",
-                details);
-    }
-
-    private void recordDenied(
-            String actorEmail,
-            String action,
-            Long documentId) {
-
-        auditLogService.recordEvent(
-                actorEmail,
-                action,
-                documentId,
-                "DENIED",
-                "Document not found or access not permitted");
-    }
-
     private String normalizeEmail(String email) {
         if (email == null || email.isBlank()) {
             throw new ResponseStatusException(
                     HttpStatus.UNAUTHORIZED,
-                    "Authentication required");
+                    "Authenticated user email is missing");
         }
 
-        return email.trim();
+        return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private void recordAudit(
+            String email,
+            Long documentId,
+            String action,
+            String result) {
+
+        auditLogService.log(
+                email,
+                documentId,
+                action,
+                result);
+    }
+
+    public record DownloadedDocument(
+            String fileName,
+            String contentType,
+            ResponseInputStream<GetObjectResponse> inputStream) {
     }
 }

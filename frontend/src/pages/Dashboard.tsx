@@ -1,103 +1,24 @@
-
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { apiRequest } from "../api/api";
 import "./Dashboard.css";
-
-type DocumentStatus = "Protected" | "Needs review" | "Restricted";
-type AuditStatus = "Allowed" | "Denied" | "Revoked" | "Updated";
 
 type DocumentItem = {
   id: string;
   name: string;
-  category: string;
-  owner: string;
   updated: string;
-  status: DocumentStatus;
-  sharing: "Private" | "Shared";
+  status: string;
 };
 
-type AuditEvent = {
-  id: number;
-  action: string;
-  document: string;
-  actor: string;
-  time: string;
-  status: AuditStatus;
+type DocumentsResponse = {
+  count: number;
+  documents: {
+    id: number;
+    fileName: string;
+    uploadedAt: string;
+    status: string;
+  }[];
 };
-
-const initialDocuments: DocumentItem[] = [
-  {
-    id: "DOC-1001",
-    name: "Employment Agreement.pdf",
-    category: "Legal",
-    owner: "Hari",
-    updated: "Today",
-    status: "Protected",
-    sharing: "Private",
-  },
-  {
-    id: "DOC-1002",
-    name: "Client Contract.pdf",
-    category: "Contracts",
-    owner: "Hari",
-    updated: "Yesterday",
-    status: "Protected",
-    sharing: "Shared",
-  },
-  {
-    id: "DOC-1003",
-    name: "Financial Report.xlsx",
-    category: "Finance",
-    owner: "Hari",
-    updated: "22 Oct 2026",
-    status: "Needs review",
-    sharing: "Private",
-  },
-  {
-    id: "DOC-1004",
-    name: "Project Blueprint.docx",
-    category: "Engineering",
-    owner: "Hari",
-    updated: "21 Oct 2026",
-    status: "Protected",
-    sharing: "Shared",
-  },
-];
-
-const sampleAuditEvents: AuditEvent[] = [
-  {
-    id: 1,
-    action: "Document access",
-    document: "Employment Agreement.pdf",
-    actor: "Hari",
-    time: "Today · 10:42 AM",
-    status: "Allowed",
-  },
-  {
-    id: 2,
-    action: "Access attempt",
-    document: "Financial Report.xlsx",
-    actor: "Unverified user",
-    time: "Today · 10:18 AM",
-    status: "Denied",
-  },
-  {
-    id: 3,
-    action: "Permission revoked",
-    document: "Client Contract.pdf",
-    actor: "Hari",
-    time: "Today · 09:55 AM",
-    status: "Revoked",
-  },
-  {
-    id: 4,
-    action: "Document updated",
-    document: "Project Blueprint.docx",
-    actor: "Hari",
-    time: "Yesterday · 04:20 PM",
-    status: "Updated",
-  },
-];
 
 const navigation = [
   { label: "Dashboard", path: "/dashboard", icon: "▦" },
@@ -114,8 +35,9 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   const [search, setSearch] = useState("");
-  const [auditFilter, setAuditFilter] = useState("All events");
-  const [documents] = useState(initialDocuments);
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(true);
+  const [documentsError, setDocumentsError] = useState("");
 
   const [darkMode, setDarkMode] = useState(() => {
     try {
@@ -125,17 +47,49 @@ export default function Dashboard() {
     }
   });
 
-  const protectedCount = documents.filter(
-    (document) => document.status === "Protected"
-  ).length;
+  useEffect(() => {
+    let active = true;
 
-  const reviewCount = documents.filter(
-    (document) => document.status === "Needs review"
-  ).length;
+    async function loadDocuments() {
+      setDocumentsLoading(true);
+      setDocumentsError("");
 
-  const sharedCount = documents.filter(
-    (document) => document.sharing === "Shared"
-  ).length;
+      try {
+        const response = await apiRequest<DocumentsResponse>(
+          "/api/documents"
+        );
+
+        if (!active) return;
+
+        const actualDocuments: DocumentItem[] = response.documents.map(
+          (document) => ({
+            id: String(document.id),
+            name: document.fileName,
+            updated: new Date(document.uploadedAt).toLocaleString(),
+            status: document.status,
+          })
+        );
+
+        setDocuments(actualDocuments);
+      } catch (error) {
+        if (!active) return;
+
+        setDocumentsError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load documents."
+        );
+      } finally {
+        if (active) setDocumentsLoading(false);
+      }
+    }
+
+    void loadDocuments();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const filteredDocuments = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -143,27 +97,12 @@ export default function Dashboard() {
     if (!query) return documents;
 
     return documents.filter((document) =>
-      [
-        document.name,
-        document.category,
-        document.owner,
-        document.status,
-        document.sharing,
-        document.id,
-      ]
+      [document.name, document.id, document.status, document.updated]
         .join(" ")
         .toLowerCase()
         .includes(query)
     );
   }, [documents, search]);
-
-  const filteredAuditEvents = useMemo(() => {
-    if (auditFilter === "All events") return sampleAuditEvents;
-
-    return sampleAuditEvents.filter(
-      (event) => event.status === auditFilter
-    );
-  }, [auditFilter]);
 
   function toggleTheme() {
     const nextTheme = !darkMode;
@@ -223,7 +162,7 @@ export default function Dashboard() {
             activity history.
           </p>
           <span className="tv-live-indicator">
-            <i /> Demo workspace
+            <i /> Backend connected through API
           </span>
         </div>
 
@@ -287,7 +226,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Neon TrustVault shield, document and lock illustration */}
           <div className="tv-hero-art" aria-hidden="true">
             <div className="tv-art-ring">
               <div className="tv-art-shield">
@@ -296,118 +234,50 @@ export default function Dashboard() {
                   xmlns="http://www.w3.org/2000/svg"
                   width="100%"
                   height="100%"
-                  aria-hidden="true"
                   focusable="false"
                 >
                   <defs>
-                    <linearGradient
-                      id="tvShieldStroke"
-                      x1="0%"
-                      y1="0%"
-                      x2="100%"
-                      y2="100%"
-                    >
+                    <linearGradient id="tvShieldStroke" x1="0%" y1="0%" x2="100%" y2="100%">
                       <stop offset="0%" stopColor="#d9a7ff" />
                       <stop offset="48%" stopColor="#6b5cff" />
                       <stop offset="100%" stopColor="#00d9ff" />
                     </linearGradient>
-
-                    <linearGradient
-                      id="tvShieldFill"
-                      x1="0%"
-                      y1="0%"
-                      x2="100%"
-                      y2="100%"
-                    >
+                    <linearGradient id="tvShieldFill" x1="0%" y1="0%" x2="100%" y2="100%">
                       <stop offset="0%" stopColor="#ffffff" />
                       <stop offset="100%" stopColor="#c9dcff" />
                     </linearGradient>
-
-                    <linearGradient
-                      id="tvDocumentStroke"
-                      x1="0%"
-                      y1="0%"
-                      x2="100%"
-                      y2="100%"
-                    >
+                    <linearGradient id="tvDocumentStroke" x1="0%" y1="0%" x2="100%" y2="100%">
                       <stop offset="0%" stopColor="#853eff" />
                       <stop offset="100%" stopColor="#087dff" />
                     </linearGradient>
-
-                    <linearGradient
-                      id="tvLockFill"
-                      x1="0%"
-                      y1="0%"
-                      x2="100%"
-                      y2="100%"
-                    >
-                      <stop offset="0%" stopColor="#bba2ff" />
-                      <stop offset="100%" stopColor="#49d8ff" />
-                    </linearGradient>
-
-                    <filter
-                      id="tvShieldGlow"
-                      x="-50%"
-                      y="-50%"
-                      width="200%"
-                      height="200%"
-                    >
-                      <feGaussianBlur stdDeviation="5" result="blur" />
-                      <feMerge>
-                        <feMergeNode in="blur" />
-                        <feMergeNode in="SourceGraphic" />
-                      </feMerge>
-                    </filter>
                   </defs>
 
-                  {/* Outer shield */}
                   <path
                     d="M110 12 L190 48 V106 C190 159 156 198 110 224 C64 198 30 159 30 106 V48 Z"
                     fill="url(#tvShieldFill)"
                     stroke="url(#tvShieldStroke)"
                     strokeWidth="7"
                     strokeLinejoin="round"
-                    filter="url(#tvShieldGlow)"
                   />
-
-                  {/* Inner shield border */}
                   <path
                     d="M110 31 L173 59 V105 C173 148 146 181 110 202 C74 181 47 148 47 105 V59 Z"
                     fill="none"
                     stroke="#8d78ff"
                     strokeWidth="4"
-                    strokeLinejoin="round"
-                    opacity="0.85"
                   />
-
-                  {/* Document */}
                   <path
                     d="M79 67 H136 L158 89 V151 Q158 164 145 164 H79 Q66 164 66 151 V80 Q66 67 79 67 Z"
                     fill="#ffffff"
                     stroke="url(#tvDocumentStroke)"
                     strokeWidth="6"
-                    strokeLinejoin="round"
                   />
-
-                  {/* Folded document corner */}
                   <path
-                    d="M136 68 V84 Q136 89 142 89 H157"
-                    fill="#dceaff"
-                    stroke="url(#tvDocumentStroke)"
-                    strokeWidth="5"
-                    strokeLinejoin="round"
-                  />
-
-                  {/* Document lines */}
-                  <path
-                    d="M83 101 H129 M83 116 H132 M83 131 H113"
+                    d="M136 68 V84 Q136 89 142 89 H157 M83 101 H129 M83 116 H132 M83 131 H113"
                     fill="none"
                     stroke="url(#tvDocumentStroke)"
                     strokeWidth="5"
                     strokeLinecap="round"
                   />
-
-                  {/* Lock shackle */}
                   <path
                     d="M100 154 V139 A17 17 0 0 1 134 139 V154"
                     fill="none"
@@ -415,20 +285,16 @@ export default function Dashboard() {
                     strokeWidth="8"
                     strokeLinecap="round"
                   />
-
-                  {/* Lock body */}
                   <rect
                     x="88"
                     y="150"
                     width="58"
                     height="48"
                     rx="11"
-                    fill="url(#tvLockFill)"
+                    fill="#8aafff"
                     stroke="#263bb7"
                     strokeWidth="6"
                   />
-
-                  {/* Lock keyhole */}
                   <circle cx="117" cy="168" r="6" fill="#263bb7" />
                   <path
                     d="M117 174 V183"
@@ -442,22 +308,25 @@ export default function Dashboard() {
           </div>
         </section>
 
-        <div className="tv-demo-notice" role="note">
+        <div className="tv-demo-notice" role="status">
           <span aria-hidden="true">ⓘ</span>
           <span>
-            <strong>Demo data:</strong> The figures and activity below are
-            illustrative frontend examples, not verified security events.
+            <strong>Live data:</strong> Document information below comes from
+            the authenticated backend response. Audit events and sharing
+            statistics are not yet connected.
           </span>
         </div>
 
         <section className="tv-metrics" aria-label="Workspace summary">
           <article className="tv-metric-card">
             <div className="tv-metric-heading">
-              <span>Total documents</span>
+              <span>My documents</span>
               <span className="tv-metric-icon gold">▤</span>
             </div>
-            <strong className="tv-metric-number">{documents.length}</strong>
-            <p>Documents in demo workspace</p>
+            <strong className="tv-metric-number">
+              {documentsLoading ? "…" : documentsError ? "—" : documents.length}
+            </strong>
+            <p>Documents returned by the backend</p>
           </article>
 
           <article className="tv-metric-card">
@@ -465,8 +334,8 @@ export default function Dashboard() {
               <span>Shared documents</span>
               <span className="tv-metric-icon blue">⇄</span>
             </div>
-            <strong className="tv-metric-number">{sharedCount}</strong>
-            <p>Marked as shared in demo data</p>
+            <strong className="tv-metric-number">—</strong>
+            <p>Sharing statistics not connected</p>
           </article>
 
           <article className="tv-metric-card">
@@ -474,10 +343,8 @@ export default function Dashboard() {
               <span>Protected status</span>
               <span className="tv-metric-icon green">✓</span>
             </div>
-            <strong className="tv-metric-number green-text">
-              {protectedCount}
-            </strong>
-            <p>Marked protected in demo data</p>
+            <strong className="tv-metric-number">—</strong>
+            <p>Protection summary not connected</p>
           </article>
 
           <article className="tv-metric-card">
@@ -485,10 +352,8 @@ export default function Dashboard() {
               <span>Needs review</span>
               <span className="tv-metric-icon amber">!</span>
             </div>
-            <strong className="tv-metric-number amber-text">
-              {reviewCount}
-            </strong>
-            <p>Documents requiring review</p>
+            <strong className="tv-metric-number">—</strong>
+            <p>Review workflow not connected</p>
           </article>
         </section>
 
@@ -497,7 +362,7 @@ export default function Dashboard() {
             <div className="tv-panel-header">
               <div>
                 <h2>Recent Documents</h2>
-                <p>Search and review your document list.</p>
+                <p>Search your actual document list.</p>
               </div>
 
               <button
@@ -513,7 +378,7 @@ export default function Dashboard() {
               <span aria-hidden="true">⌕</span>
               <input
                 type="search"
-                placeholder="Search by name, category, owner, or ID..."
+                placeholder="Search by name, status, or ID..."
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 aria-label="Search documents"
@@ -521,50 +386,78 @@ export default function Dashboard() {
             </label>
 
             <div className="tv-document-list">
-              {filteredDocuments.map((document) => (
-                <div className="tv-document-row" key={document.id}>
-                  <div className="tv-file-icon">▤</div>
-
-                  <div className="tv-document-info">
-                    <strong>{document.name}</strong>
-                    <span>
-                      {document.category} · {document.updated} · {document.id}
-                    </span>
-                  </div>
-
-                  <div className="tv-document-badges">
-                    <span
-                      className={`tv-badge ${
-                        document.sharing === "Shared" ? "shared" : "private"
-                      }`}
-                    >
-                      {document.sharing}
-                    </span>
-
-                    <span
-                      className={`tv-badge ${
-                        document.status === "Protected"
-                          ? "protected"
-                          : "review"
-                      }`}
-                    >
-                      {document.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
-
-              {filteredDocuments.length === 0 && (
+              {documentsLoading && (
                 <div className="tv-empty-state">
-                  <span>⌕</span>
-                  <strong>No matching documents</strong>
-                  <p>Try a different name, category, or document ID.</p>
+                  <strong>Loading your documents…</strong>
+                  <p>Contacting the TrustVault backend.</p>
                 </div>
               )}
+
+              {!documentsLoading && documentsError && (
+                <div className="tv-empty-state" role="alert">
+                  <strong>Unable to load documents</strong>
+                  <p>{documentsError}</p>
+                  <button
+                    type="button"
+                    className="tv-outline-button"
+                    onClick={() => window.location.reload()}
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {!documentsLoading &&
+                !documentsError &&
+                filteredDocuments.map((document) => (
+                  <div className="tv-document-row" key={document.id}>
+                    <div className="tv-file-icon">▤</div>
+
+                    <div className="tv-document-info">
+                      <strong>{document.name}</strong>
+                      <span>
+                        Uploaded: {document.updated} · ID: {document.id}
+                      </span>
+                    </div>
+
+                    <div className="tv-document-badges">
+                      <span className="tv-badge private">
+                        My document
+                      </span>
+                      <span className="tv-badge">
+                        {document.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+
+              {!documentsLoading &&
+                !documentsError &&
+                filteredDocuments.length === 0 && (
+                  <div className="tv-empty-state">
+                    <span>⌕</span>
+                    <strong>
+                      {documents.length === 0
+                        ? "No documents yet"
+                        : "No matching documents"}
+                    </strong>
+                    <p>
+                      {documents.length === 0
+                        ? "Upload a document to see it here."
+                        : "Try another name, status, or document ID."}
+                    </p>
+                  </div>
+                )}
             </div>
 
             <div className="tv-panel-footer">
-              <span>Showing {filteredDocuments.length} demo documents</span>
+              <span>
+                {documentsLoading
+                  ? "Loading documents…"
+                  : documentsError
+                    ? "Document list unavailable"
+                    : `Showing ${filteredDocuments.length} of ${documents.length} documents`}
+              </span>
               <Link to="/documents">View all documents →</Link>
             </div>
           </article>
@@ -573,62 +466,20 @@ export default function Dashboard() {
             <div className="tv-panel-header">
               <div>
                 <h2>Access Overview</h2>
-                <p>Document status summary</p>
+                <p>Security information status</p>
               </div>
               <span className="tv-metric-icon gold">◆</span>
             </div>
 
             <div className="tv-overview-summary">
-              <strong>{protectedCount}</strong>
-              <span>documents marked protected</span>
+              <strong>—</strong>
+              <span>Access statistics not yet connected</span>
             </div>
 
-            <div
-              className="tv-bar-chart"
-              aria-label="Illustrative document status chart"
-            >
-              <div className="tv-chart-column">
-                <strong>{protectedCount}</strong>
-                <div className="tv-chart-track">
-                  <div
-                    className="tv-chart-bar green-bar"
-                    style={{
-                      height: `${
-                        (protectedCount / Math.max(documents.length, 1)) * 100
-                      }%`,
-                    }}
-                  />
-                </div>
-                <span>Protected</span>
-              </div>
-
-              <div className="tv-chart-column">
-                <strong>{reviewCount}</strong>
-                <div className="tv-chart-track">
-                  <div
-                    className="tv-chart-bar amber-bar"
-                    style={{
-                      height: `${
-                        (reviewCount / Math.max(documents.length, 1)) * 100
-                      }%`,
-                    }}
-                  />
-                </div>
-                <span>Review</span>
-              </div>
-
-              <div className="tv-chart-column">
-                <strong>—</strong>
-                <div className="tv-chart-track">
-                  <div className="tv-chart-bar red-bar" style={{ height: 0 }} />
-                </div>
-                <span>Blocked</span>
-              </div>
+            <div className="tv-chart-disclaimer">
+              The dashboard does not yet receive shared-document counts,
+              blocked attempts, or protection statistics from the backend.
             </div>
-
-            <p className="tv-chart-disclaimer">
-              Blocked attempts are not calculated from real server logs yet.
-            </p>
 
             <Link to="/permissions" className="tv-callout">
               <span className="tv-callout-icon">♙</span>
@@ -643,7 +494,7 @@ export default function Dashboard() {
               <span className="tv-callout-icon">◷</span>
               <span>
                 <strong>Inspect audit trail</strong>
-                <small>Review access, denial, and revocation events.</small>
+                <small>Review recorded access and permission events.</small>
               </span>
               <span className="tv-callout-arrow">→</span>
             </Link>
@@ -654,28 +505,12 @@ export default function Dashboard() {
           <div className="tv-panel-header tv-audit-heading">
             <div>
               <h2>Recent Audit Activity</h2>
-              <p>Illustrative events for the dashboard preview.</p>
+              <p>Real audit events are not connected yet.</p>
             </div>
 
-            <div className="tv-audit-actions">
-              <label className="tv-filter-label">
-                <span className="tv-sr-only">Filter audit events</span>
-                <select
-                  value={auditFilter}
-                  onChange={(event) => setAuditFilter(event.target.value)}
-                >
-                  <option>All events</option>
-                  <option>Allowed</option>
-                  <option>Denied</option>
-                  <option>Revoked</option>
-                  <option>Updated</option>
-                </select>
-              </label>
-
-              <Link to="/audit-log" className="tv-outline-button">
-                View audit logs
-              </Link>
-            </div>
+            <Link to="/audit-log" className="tv-outline-button">
+              View audit logs
+            </Link>
           </div>
 
           <div className="tv-table-wrap">
@@ -689,31 +524,13 @@ export default function Dashboard() {
                   <th>Result</th>
                 </tr>
               </thead>
-
               <tbody>
-                {filteredAuditEvents.map((event) => (
-                  <tr key={event.id}>
-                    <td>{event.action}</td>
-                    <td>{event.document}</td>
-                    <td>{event.actor}</td>
-                    <td>{event.time}</td>
-                    <td>
-                      <span
-                        className={`tv-audit-status ${event.status.toLowerCase()}`}
-                      >
-                        {event.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-
-                {filteredAuditEvents.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="tv-table-empty">
-                      No events match this filter.
-                    </td>
-                  </tr>
-                )}
+                <tr>
+                  <td colSpan={5} className="tv-table-empty">
+                    No audit events loaded. Connect a backend audit-log
+                    endpoint before displaying real activity.
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -721,9 +538,8 @@ export default function Dashboard() {
           <div className="tv-audit-note">
             <span>ⓘ</span>
             <p>
-              A production audit trail must be recorded and protected by the
-              backend. Client-side sample events can be edited and are not
-              proof of actual access.
+              Audit evidence must be recorded and protected by the backend.
+              This dashboard does not invent audit events.
             </p>
           </div>
         </section>

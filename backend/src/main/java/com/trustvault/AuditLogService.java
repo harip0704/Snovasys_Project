@@ -2,7 +2,6 @@
 package com.trustvault;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -14,7 +13,36 @@ public class AuditLogService {
         this.auditLogRepository = auditLogRepository;
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
+    public void log(
+            String actorEmail,
+            Long documentId,
+            String action,
+            String result) {
+
+        log(actorEmail, documentId, action, result, null);
+    }
+
+    @Transactional
+    public void log(
+            String actorEmail,
+            Long documentId,
+            String action,
+            String result,
+            String details) {
+
+        AuditLog auditLog = new AuditLog(
+                actorEmail,
+                action,
+                documentId,
+                result,
+                details
+        );
+
+        auditLogRepository.save(auditLog);
+    }
+
+    @Transactional
     public void recordEvent(
             String actorEmail,
             String action,
@@ -27,7 +55,8 @@ public class AuditLogService {
                 action,
                 documentId,
                 result,
-                details);
+                details
+        );
 
         auditLogRepository.save(auditLog);
     }
